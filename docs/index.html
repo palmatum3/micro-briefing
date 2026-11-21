@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="robots" content="noindex, nofollow" />
-  <title>임상미생물 주간 브리핑 v8.0</title>
+  <title>임상미생물 주간 브리핑 v8.1</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
   <style>
     :root {
@@ -21,6 +21,10 @@
       --purple-soft: #f5f3ff;
       --red: #dc2626;
       --red-soft: #fef2f2;
+      --orange: #c2410c;
+      --orange-soft: #fff7ed;
+      --blue-ref: #1d4ed8;
+      --blue-ref-soft: #eff6ff;
       --amber: #d97706;
       --amber-soft: #fffbeb;
       --green: #059669;
@@ -52,10 +56,7 @@
       z-index: 40;
       box-shadow: 0 2px 10px rgba(15, 23, 42, 0.14);
     }
-    .topbar-inner {
-      max-width: 1180px;
-      margin: 0 auto;
-    }
+    .topbar-inner { max-width: 1180px; margin: 0 auto; }
     .brand-row {
       display: flex;
       justify-content: space-between;
@@ -72,17 +73,8 @@
       align-items: center;
       gap: 8px;
     }
-    .brand-sub {
-      font-size: 0.78rem;
-      color: #cbd5e1;
-      margin-top: 2px;
-    }
-    .meta-actions {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
+    .brand-sub { font-size: 0.78rem; color: #cbd5e1; margin-top: 2px; }
+    .meta-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
     .status-pill {
       background: rgba(255, 255, 255, 0.12);
       border: 1px solid rgba(255, 255, 255, 0.22);
@@ -99,12 +91,7 @@
     .dot-ok { width: 7px; height: 7px; border-radius: 50%; background: #34d399; display: inline-block; }
 
     /* 4 Fixed Tabs */
-    .tab-bar {
-      display: flex;
-      gap: 4px;
-      overflow-x: auto;
-      scrollbar-width: none;
-    }
+    .tab-bar { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
     .tab-bar::-webkit-scrollbar { display: none; }
     .tab-btn {
       background: transparent;
@@ -119,10 +106,7 @@
       transition: color 0.15s, border-color 0.15s;
     }
     .tab-btn:hover { color: #fff; }
-    .tab-btn.active {
-      color: #fff;
-      border-bottom-color: #38bdf8;
-    }
+    .tab-btn.active { color: #fff; border-bottom-color: #38bdf8; }
     .tab-count {
       font-size: 0.72rem;
       background: rgba(255, 255, 255, 0.15);
@@ -133,11 +117,7 @@
     }
 
     /* Main Container */
-    .container {
-      max-width: 1180px;
-      margin: 18px auto 48px;
-      padding: 0 16px;
-    }
+    .container { max-width: 1180px; margin: 18px auto 48px; padding: 0 16px; }
     .tab-pane { display: none; }
     .tab-pane.active { display: block; }
 
@@ -167,17 +147,10 @@
       align-items: center;
       gap: 8px;
     }
-    .section-sub {
-      font-size: 0.8rem;
-      color: var(--text-light);
-    }
+    .section-sub { font-size: 0.8rem; color: var(--text-light); }
 
     /* Summary Grid (Panel A) */
-    .grid-3 {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 12px;
-    }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
     .kpi-card {
       background: var(--surface-soft);
       border: 1px solid var(--border);
@@ -193,19 +166,10 @@
       justify-content: space-between;
       align-items: center;
     }
-    .kpi-value {
-      font-size: 1.35rem;
-      font-weight: 800;
-      color: var(--text);
-      letter-spacing: -0.02em;
-    }
-    .kpi-meta {
-      font-size: 0.79rem;
-      color: var(--text-muted);
-      margin-top: 5px;
-    }
+    .kpi-value { font-size: 1.35rem; font-weight: 800; color: var(--text); letter-spacing: -0.02em; }
+    .kpi-meta { font-size: 0.79rem; color: var(--text-muted); margin-top: 5px; }
 
-    /* Badges */
+    /* 4-Tier Badges */
     .badge {
       display: inline-flex;
       align-items: center;
@@ -216,8 +180,9 @@
       border-radius: 999px;
       white-space: nowrap;
     }
-    .b-high { background: var(--red-soft); color: var(--red); border: 1px solid #fecaca; }
-    .b-medium { background: var(--amber-soft); color: #b45309; border: 1px solid #fde68a; }
+    .b-must { background: var(--red-soft); color: var(--red); border: 1px solid #fca5a5; }
+    .b-high { background: var(--orange-soft); color: var(--orange); border: 1px solid #fdba74; }
+    .b-medium { background: var(--blue-ref-soft); color: var(--blue-ref); border: 1px solid #bfdbfe; }
     .b-low { background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; }
     .b-domestic { background: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe; }
     .b-overseas { background: var(--purple-soft); color: #6d28d9; border: 1px solid #ddd6fe; }
@@ -227,13 +192,7 @@
     .b-abs { background: #f8fafc; color: #64748b; border: 1px solid #e2e8f0; }
 
     /* Controls & Filters */
-    .toolbar {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-      align-items: center;
-      margin-bottom: 14px;
-    }
+    .toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
     .input, .select {
       background: #fff;
       border: 1px solid #cbd5e1;
@@ -259,8 +218,6 @@
       gap: 5px;
     }
     .btn:hover { background: #f8fafc; }
-    .btn-primary { background: var(--primary); color: #fff; border-color: var(--primary); }
-    .btn-primary:hover { background: #1e40af; }
     .btn-active { background: var(--primary-soft); color: var(--primary); border-color: #93c5fd; }
     .pill-group {
       display: inline-flex;
@@ -294,6 +251,7 @@
       overflow: hidden;
       transition: border-color 0.15s;
     }
+    .acc-item.tier-must { border-left: 4px solid var(--red); }
     .acc-item:hover { border-color: #94a3b8; }
     .acc-header {
       padding: 13px 15px;
@@ -312,13 +270,7 @@
       margin-bottom: 5px;
     }
     .acc-date { font-size: 0.75rem; color: var(--text-light); margin-left: auto; }
-    .acc-title {
-      font-size: 0.95rem;
-      font-weight: 700;
-      color: var(--text);
-      margin: 0 0 4px;
-      word-break: keep-all;
-    }
+    .acc-title { font-size: 0.95rem; font-weight: 700; color: var(--text); margin: 0 0 4px; word-break: keep-all; }
     .acc-preview {
       font-size: 0.83rem;
       color: var(--text-muted);
@@ -327,12 +279,7 @@
       -webkit-box-orient: vertical;
       overflow: hidden;
     }
-    .acc-right {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      flex-shrink: 0;
-    }
+    .acc-right { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
     .bm-btn {
       border: none;
       background: transparent;
@@ -343,11 +290,7 @@
       line-height: 1;
     }
     .bm-btn.saved { color: #eab308; }
-    .chev {
-      font-size: 0.78rem;
-      color: var(--text-light);
-      transition: transform 0.2s;
-    }
+    .chev { font-size: 0.78rem; color: var(--text-light); transition: transform 0.2s; }
     .acc-item.open .chev { transform: rotate(180deg); }
     .acc-body {
       display: none;
@@ -356,12 +299,7 @@
       background: #fcfdff;
     }
     .acc-item.open .acc-body { display: block; }
-    .orig-title {
-      font-size: 0.8rem;
-      color: var(--text-light);
-      margin: 10px 0;
-      font-style: italic;
-    }
+    .orig-title { font-size: 0.8rem; color: var(--text-light); margin: 10px 0; font-style: italic; }
     .box-fact {
       background: #fff;
       border: 1px solid var(--border);
@@ -389,8 +327,23 @@
       background: #f8fafc;
       border: 1px dashed #cbd5e1;
       border-radius: 8px;
-      padding: 7px 10px;
+      padding: 8px 11px;
       margin-bottom: 10px;
+    }
+    .score-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 5px;
+    }
+    .score-chip {
+      background: #fff;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      padding: 1px 7px;
+      font-size: 0.73rem;
+      font-weight: 700;
+      color: #334155;
     }
     .box-label {
       font-size: 0.72rem;
@@ -411,24 +364,9 @@
     }
 
     /* Chart */
-    .chart-wrap {
-      position: relative;
-      height: 330px;
-      width: 100%;
-    }
-    .hai-strip {
-      display: grid;
-      grid-template-columns: repeat(5, minmax(0, 1fr));
-      gap: 8px;
-      margin-top: 12px;
-    }
-    .hai-mini {
-      background: var(--surface-soft);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 8px 10px;
-      font-size: 0.78rem;
-    }
+    .chart-wrap { position: relative; height: 330px; width: 100%; }
+    .hai-strip { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
+    .hai-mini { background: var(--surface-soft); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 0.78rem; }
 
     /* 52-Week Chronicle */
     .chron-row {
@@ -441,13 +379,7 @@
       transition: background 0.12s;
     }
     .chron-row:hover { background: var(--primary-soft); }
-    .chron-wk {
-      font-weight: 800;
-      font-size: 0.82rem;
-      color: var(--primary);
-      min-width: 78px;
-      flex-shrink: 0;
-    }
+    .chron-wk { font-weight: 800; font-size: 0.82rem; color: var(--primary); min-width: 78px; flex-shrink: 0; }
     .chron-content { flex: 1; font-size: 0.84rem; }
     .chron-empty { color: #94a3b8; font-size: 0.8rem; }
 
@@ -466,32 +398,18 @@
     .modal {
       background: #fff;
       border-radius: 14px;
-      max-width: 760px;
+      max-width: 780px;
       width: 100%;
       max-height: 82vh;
       overflow-y: auto;
       padding: 18px 20px;
       box-shadow: 0 20px 45px rgba(15, 23, 42, 0.25);
     }
-    .log-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 0.78rem;
-    }
-    .log-table th, .log-table td {
-      border-bottom: 1px solid var(--border);
-      padding: 7px 6px;
-      text-align: left;
-      vertical-align: top;
-    }
+    .log-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+    .log-table th, .log-table td { border-bottom: 1px solid var(--border); padding: 7px 6px; text-align: left; vertical-align: top; }
     .log-table th { background: var(--surface-soft); color: var(--text-light); }
 
-    .empty-state {
-      text-align: center;
-      padding: 30px 16px;
-      color: var(--text-light);
-      font-size: 0.88rem;
-    }
+    .empty-state { text-align: center; padding: 30px 16px; color: var(--text-light); font-size: 0.88rem; }
     .footer-note {
       text-align: center;
       font-size: 0.76rem;
@@ -517,10 +435,10 @@
       <div class="brand-row">
         <div>
           <div class="brand-title">임상미생물 주간 브리핑</div>
-          <div class="brand-sub" id="brandSub">v8.0 · GitHub Pages · 데이터 불러오는 중...</div>
+          <div class="brand-sub" id="brandSub">v8.1 · GitHub Pages · 데이터 불러오는 중...</div>
         </div>
         <div class="meta-actions">
-          <button class="status-pill" id="btnLogs" type="button" title="최근 자동 수집 실행 이력 보기">
+          <button class="status-pill" id="btnLogs" type="button" title="최근 자동 수집 및 채점 실행 이력 보기">
             <span class="dot-ok"></span>
             <span id="statusText">수집 로그</span>
           </button>
@@ -560,7 +478,7 @@
       <div class="card">
         <div class="section-head">
           <h2 class="section-title">이상 급증 및 국내·해외 감염병 경보</h2>
-          <span class="section-sub">국내(KDCA) · 해외(WHO DONs) 배지 구분</span>
+          <span class="section-sub">국내(KDCA) · 해외(WHO DONs) 배지 및 4단계 경보 등급</span>
         </div>
         <div id="weeklyAlertsBox" class="item-list"></div>
       </div>
@@ -569,7 +487,7 @@
       <div class="card">
         <div class="section-head">
           <h2 class="section-title">해당 주차 필독 논문 TOP 5</h2>
-          <span class="section-sub" id="top5Subtitle">Strict High 기준 엄선 · 클릭 시 원문 요약 및 AI 임상 포인트 펼침</span>
+          <span class="section-sub" id="top5Subtitle">100점 정량 채점 1~5등 순 엄선 · 클릭 시 원문 요약 및 AI 임상 포인트 펼침</span>
         </div>
         <div id="weeklyTop5Box" class="item-list"></div>
       </div>
@@ -668,7 +586,7 @@
     <section id="tab-paper" class="tab-pane">
       <div class="card">
         <div class="section-head">
-          <h2 class="section-title">4대 임상미생물 학술지 논문 (JCM · CMI · CID · ACM)</h2>
+          <h2 class="section-title">2026년 4대 임상미생물 학술지 논문 (JCM · CMI · CID · ACM)</h2>
           <span class="section-sub" id="paperFilterMeta"></span>
         </div>
         <div class="toolbar">
@@ -676,10 +594,15 @@
           <select class="select" id="paperSource"></select>
           <select class="select" id="paperCat"></select>
           <select class="select" id="paperImp">
-            <option value="">중요도 전체</option>
-            <option value="High">High (필독)</option>
-            <option value="Medium">Medium</option>
-            <option value="Low">Low</option>
+            <option value="">등급 전체 (4단계)</option>
+            <option value="Must-Read">필독 (Must-Read)</option>
+            <option value="High">주목 (High)</option>
+            <option value="Medium">참고 (Medium)</option>
+            <option value="Low">단신 (Low)</option>
+          </select>
+          <select class="select" id="paperSort">
+            <option value="date">최신순</option>
+            <option value="score">점수 높은순</option>
           </select>
           <input class="input input-search" id="paperSearch" type="search" placeholder="제목·초록 요약·균종·PMID 검색..." />
           <button class="btn" id="paperBmOnly" type="button">★ 북마크만</button>
@@ -702,7 +625,7 @@
   <div class="modal-backdrop" id="logModal">
     <div class="modal">
       <div class="section-head">
-        <h3 class="section-title">시스템 수집 · 요약 실행 로그</h3>
+        <h3 class="section-title">시스템 수집 · 정량 채점 실행 로그</h3>
         <button class="btn" id="btnCloseLogs" type="button">닫기</button>
       </div>
       <div class="section-sub" id="logModelInfo" style="margin-bottom:10px;"></div>
@@ -725,6 +648,8 @@
 
   <script>
     const BM_STORAGE_KEY = 'cmb_personal_bookmarks_v8';
+    const TIER_RANK = { 'Must-Read': 4, 'High': 3, 'Medium': 2, 'Low': 1 };
+
     const state = {
       data: null,
       activeTab: 'weekly',
@@ -753,7 +678,6 @@
           return;
         }
       } catch (e) {}
-      // 최초 접속 시 시트 기본 북마크를 개인 저장소로 초기 복제
       const initSet = new Set();
       (items || []).forEach(it => { if (it.bookmarked) initSet.add(it.uid); });
       state.bookmarks = initSet;
@@ -766,7 +690,7 @@
       } catch (e) {}
     }
 
-    function toggleBookmark(uid, btnEl) {
+    function toggleBookmark(uid) {
       if (state.bookmarks.has(uid)) state.bookmarks.delete(uid);
       else state.bookmarks.add(uid);
       saveBookmarks();
@@ -779,10 +703,24 @@
       if (state.paperBmOnly && state.activeTab === 'paper') renderPapers();
     }
 
-    function impBadge(imp) {
-      const v = String(imp || 'Medium');
-      const cls = v === 'High' ? 'b-high' : (v === 'Low' ? 'b-low' : 'b-medium');
-      return '<span class="badge ' + cls + '">' + esc(v) + '</span>';
+    function tierBadgeHtml(item) {
+      const imp = String(item.importance || 'Medium');
+      const isOutbreak = item.content_type === 'outbreak';
+      const sc = item.importance_score;
+      const scoreSuffix = (sc !== null && sc !== undefined && !isNaN(sc)) ? (' · ' + sc + '점') : '';
+      let cls = 'b-medium';
+      let label = isOutbreak ? '동향' : '참고';
+      if (imp === 'Must-Read') {
+        cls = 'b-must';
+        label = isOutbreak ? '긴급' : '필독';
+      } else if (imp === 'High') {
+        cls = 'b-high';
+        label = isOutbreak ? '주의' : '주목';
+      } else if (imp === 'Low') {
+        cls = 'b-low';
+        label = '단신';
+      }
+      return '<span class="badge ' + cls + '">' + esc(label + scoreSuffix) + '</span>';
     }
 
     function accessBadge(status) {
@@ -798,6 +736,16 @@
       return '<span class="badge ' + cls + '">' + esc(rb) + '</span>';
     }
 
+    function compareByScoreDesc(a, b) {
+      const sa = (a.importance_score !== null && a.importance_score !== undefined) ? a.importance_score : -1;
+      const sb = (b.importance_score !== null && b.importance_score !== undefined) ? b.importance_score : -1;
+      if (sb !== sa) return sb - sa;
+      const ta = TIER_RANK[a.importance] || 0;
+      const tb = TIER_RANK[b.importance] || 0;
+      if (tb !== ta) return tb - ta;
+      return String(b.pub_date || '').localeCompare(String(a.pub_date || ''));
+    }
+
     function renderAccordionCard(item, opts) {
       const options = opts || {};
       const saved = state.bookmarks.has(item.uid);
@@ -808,12 +756,22 @@
       if (item.pmid) idLinks.push('PMID: ' + esc(item.pmid));
       if (item.doi) idLinks.push('DOI: ' + esc(item.doi));
 
+      const hasScoreBox = item.score_breakdown || item.importance_reason;
+      let scoreChipsHtml = '';
+      if (item.score_breakdown) {
+        scoreChipsHtml = '<div class="score-pills">' +
+          '<span class="score-chip" style="background:#eff6ff; color:#1d4ed8; border-color:#93c5fd;">총점 ' + esc(item.importance_score) + '/100</span>' +
+          item.score_breakdown.split('|').map(part => '<span class="score-chip">' + esc(part.trim()) + '</span>').join('') +
+        '</div>';
+      }
+
+      const tierClass = item.importance === 'Must-Read' ? ' tier-must' : '';
       return (
-        '<article class="acc-item' + (options.openByDefault ? ' open' : '') + '">' +
+        '<article class="acc-item' + tierClass + (options.openByDefault ? ' open' : '') + '">' +
           '<div class="acc-header" onclick="this.parentElement.classList.toggle(\'open\')">' +
             '<div class="acc-main">' +
               '<div class="acc-badges">' +
-                impBadge(item.importance) +
+                tierBadgeHtml(item) +
                 (item.content_type === 'outbreak' ? regionBadgeHtml(item) : '<span class="badge b-source">' + esc(item.source) + '</span>') +
                 '<span class="badge b-cat">' + esc(item.topic_category) + '</span>' +
                 '<span class="acc-date">' + esc(item.pub_date) + (item.week_key ? ' · ' + esc(item.week_key) : '') + '</span>' +
@@ -822,7 +780,7 @@
               '<div class="acc-preview">' + esc(previewText) + '</div>' +
             '</div>' +
             '<div class="acc-right">' +
-              '<button class="bm-btn' + (saved ? ' saved' : '') + '" data-uid="' + esc(item.uid) + '" type="button" title="개인 북마크" onclick="event.stopPropagation(); toggleBookmark(\'' + esc(item.uid).replace(/'/g, "\\'") + '\', this)">' + (saved ? '★' : '☆') + '</button>' +
+              '<button class="bm-btn' + (saved ? ' saved' : '') + '" data-uid="' + esc(item.uid) + '" type="button" title="개인 북마크" onclick="event.stopPropagation(); toggleBookmark(\'' + esc(item.uid).replace(/'/g, "\\'") + '\')">' + (saved ? '★' : '☆') + '</button>' +
               '<span class="chev">▼</span>' +
             '</div>' +
           '</div>' +
@@ -830,7 +788,7 @@
             (showOrig ? '<div class="orig-title">' + esc(item.title_orig) + '</div>' : '<div style="height:10px"></div>') +
             '<div class="box-fact"><span class="box-label">원문 사실 요약</span>' + esc(item.fact_summary_ko || '요약 내용 없음') + '</div>' +
             (item.ai_clinical_note ? '<div class="box-ai"><span class="box-label">임상·검사실 적용 포인트 (AI 참고 해석)</span>' + esc(item.ai_clinical_note) + '</div>' : '') +
-            (item.importance_reason ? '<div class="box-reason"><strong>중요도 판정 근거:</strong> ' + esc(item.importance_reason) + '</div>' : '') +
+            (hasScoreBox ? '<div class="box-reason">' + scoreChipsHtml + (item.importance_reason ? ('<strong>판정 근거:</strong> ' + esc(item.importance_reason)) : '') + '</div>' : '') +
             '<div class="acc-footer">' +
               '<div>' + accessBadge(item.access_status) + (idLinks.length ? ' · ' + idLinks.join(' · ') : '') + ' · <span style="opacity:0.75">' + esc(metaTag) + '</span></div>' +
               (item.source_url ? '<a href="' + esc(item.source_url) + '" target="_blank" rel="noopener noreferrer" style="font-weight:700;">원문 바로가기 ↗</a>' : '') +
@@ -868,8 +826,8 @@
       const wk = state.selectedWeek;
       const weekItems = items.filter(x => x.week_key === wk);
       const weekPapers = weekItems.filter(x => x.content_type === 'paper');
-      const weekGuides = weekItems.filter(x => x.content_type === 'guideline');
-      const weekOutbreaks = weekItems.filter(x => x.content_type === 'outbreak');
+      const weekGuides = weekItems.filter(x => x.content_type === 'guideline').sort(compareByScoreDesc);
+      const weekOutbreaks = weekItems.filter(x => x.content_type === 'outbreak').sort(compareByScoreDesc);
 
       document.getElementById('weekSummaryMeta').textContent =
         wk + ' 수집분: 논문 ' + weekPapers.length + '편 · 가이드라인 ' + weekGuides.length + '건 · 감염병 경보 ' + weekOutbreaks.length + '건';
@@ -888,7 +846,7 @@
         '</div>'
       ) : '<div class="kpi-card"><div class="kpi-label">국내 CRE 동향</div><div class="kpi-meta">데이터 없음</div></div>';
 
-      // 패널 A: 2) 4급 HAI 5종 변동 유무 (특이사항 없을 경우 '특이사항 없음' 명시)
+      // 패널 A: 2) 4급 HAI 5종 변동 유무
       const haiCards = surv.haiCards || [];
       const notableHai = [];
       haiCards.forEach(h => {
@@ -929,9 +887,9 @@
       // 이상 급증 및 국내외 경보
       const alertCards = [];
       (surv.surgeAlerts || []).forEach(al => {
-        const cls = al.level === 'critical' ? 'b-high' : 'b-medium';
+        const cls = al.level === 'critical' ? 'b-must' : 'b-high';
         alertCards.push(
-          '<div class="acc-item">' +
+          '<div class="acc-item' + (al.level === 'critical' ? ' tier-must' : '') + '">' +
             '<div class="acc-header" style="cursor:default;">' +
               '<div class="acc-main">' +
                 '<div class="acc-badges">' +
@@ -950,15 +908,15 @@
         ? alertCards.join('')
         : '<div class="empty-state">해당 주차에 등록된 국내·해외 감염병 경보가 없습니다.</div>';
 
-      // 필독 논문 TOP 5
-      const highPapers = weekPapers.filter(p => p.importance === 'High');
-      const medPapers = weekPapers.filter(p => p.importance === 'Medium');
-      const top5 = highPapers.slice(0, 5);
-      const displayTop = top5.length > 0 ? top5 : medPapers.slice(0, 5);
+      // 필독 논문 TOP 5 (점수 1~5등 순 정렬: 필독 우선 -> 주목 -> 참고)
+      const sortedPapers = weekPapers.slice().sort(compareByScoreDesc);
+      const mustPapers = sortedPapers.filter(p => p.importance === 'Must-Read');
+      const highPapers = sortedPapers.filter(p => p.importance === 'High');
+      const priorityPool = mustPapers.concat(highPapers);
+      const displayTop = (priorityPool.length > 0 ? priorityPool : sortedPapers).slice(0, 5);
+
       document.getElementById('top5Subtitle').textContent =
-        highPapers.length > 0
-          ? ('해당 주차 High ' + highPapers.length + '편 중 상위 ' + displayTop.length + '편 노출 · 클릭 시 상세 요약 펼침')
-          : ('해당 주차 Strict High 논문 없음 (참고용 Medium 상위 ' + displayTop.length + '편 표시)');
+        '해당 주차 필독 ' + mustPapers.length + '편 · 주목 ' + highPapers.length + '편 중 상위 ' + displayTop.length + '편 (정량 점수순 · 클릭 시 상세 펼침)';
       document.getElementById('weeklyTop5Box').innerHTML = displayTop.length
         ? displayTop.map(p => renderAccordionCard(p)).join('')
         : '<div class="empty-state">해당 주차에 수집된 논문이 없습니다.</div>';
@@ -973,7 +931,7 @@
       }
     }
 
-    /* ==================== 탭 2 렌더링 (이중 Y축 그래프 & 52주 연대기) ==================== */
+    /* ==================== 탭 2 렌더링 ==================== */
     function renderDualAxisChart() {
       const surv = state.data.surveillance || {};
       const year = surv.year || '2026';
@@ -1049,7 +1007,6 @@
         }
       });
 
-      // 하단 HAI 5종 요약 카드
       document.getElementById('haiMiniStrip').innerHTML = (surv.haiCards || []).map(h => {
         const val = state.haiMetric === 'blood' ? h.bloodRate : h.nonBloodRate;
         const delta = state.haiMetric === 'blood' ? h.bloodDeltaPct : h.nonBloodDeltaPct;
@@ -1093,7 +1050,7 @@
         const list = byWeek[wk] || [];
         if (onlyActive && list.length === 0) continue;
         const summaryHtml = list.length
-          ? list.map(x => regionBadgeHtml(x) + ' ' + esc(x.title_ko)).join('<br/>')
+          ? list.map(x => tierBadgeHtml(x) + ' ' + regionBadgeHtml(x) + ' ' + esc(x.title_ko)).join('<br/>')
           : '<span class="chron-empty">특이 감염병 경보 없음</span>';
         rows.push(
           '<div class="chron-row" onclick="jumpToWeek(\'' + wk + '\')">' +
@@ -1135,6 +1092,7 @@
       const src = document.getElementById('paperSource').value;
       const cat = document.getElementById('paperCat').value;
       const imp = document.getElementById('paperImp').value;
+      const sortMode = document.getElementById('paperSort').value;
       const q = (document.getElementById('paperSearch').value || '').trim().toLowerCase();
 
       const list = (state.data.items || []).filter(x => {
@@ -1150,6 +1108,12 @@
         }
         return true;
       });
+
+      if (sortMode === 'score') {
+        list.sort(compareByScoreDesc);
+      } else {
+        list.sort((a, b) => String(b.pub_date || '').localeCompare(String(a.pub_date || '')));
+      }
 
       const shown = list.slice(0, state.paperLimit);
       document.getElementById('paperFilterMeta').textContent =
@@ -1181,9 +1145,10 @@
 
       const meta = data.meta || {};
       const models = meta.models || {};
+      const cutoffs = meta.cutoffs || { must_read: 85, high: 70, medium: 45 };
       document.getElementById('brandSub').textContent =
-        (meta.version || 'v8.0') + ' · GitHub Pages · 최종 갱신: ' + (meta.generated_at || '-') +
-        (models.deep ? (' · 정밀 모델: ' + models.deep) : '');
+        (meta.version || 'v8.1') + ' · GitHub Pages · 최종 갱신: ' + (meta.generated_at || '-') +
+        (models.deep ? (' · 정밀 모델: ' + models.deep + ' (우회: ' + (models.fallback || '-') + ')') : '');
 
       const outbreaks = items.filter(x => x.content_type === 'outbreak');
       const guidelines = items.filter(x => x.content_type === 'guideline');
@@ -1193,31 +1158,28 @@
       document.getElementById('cntGuideline').textContent = guidelines.length;
       document.getElementById('cntPaper').textContent = papers.length;
 
-      // 주차 목록
       const weeks = Array.from(new Set(items.map(x => x.week_key).filter(Boolean))).sort().reverse();
       const weekSel = document.getElementById('weekSelect');
       weekSel.innerHTML = weeks.map(w => '<option value="' + esc(w) + '">' + esc(w) + '</option>').join('');
       state.selectedWeek = weeks[0] || '2026-W47';
       weekSel.value = state.selectedWeek;
 
-      // 가이드라인 필터
       fillSelect('guideSource', '출처 전체', Array.from(new Set(guidelines.map(x => x.source))).sort());
       fillSelect('guideCat', '분야 전체', Array.from(new Set(guidelines.map(x => x.topic_category))).sort());
 
-      // 논문 필터
       const months = Array.from(new Set(papers.map(x => (x.pub_date || '').slice(0, 7)).filter(Boolean))).sort().reverse();
-      fillSelect('paperMonth', '전체 월', months);
+      fillSelect('paperMonth', '전체 월 (2026)', months);
       fillSelect('paperSource', '저널 전체', Array.from(new Set(papers.map(x => x.source))).sort());
       fillSelect('paperCat', '분야 전체', Array.from(new Set(papers.map(x => x.topic_category))).sort());
 
-      // 로그 모달
       document.getElementById('logModelInfo').textContent =
-        '논문·가이드라인 모델: ' + (models.deep || '-') + ' (thinking=' + (models.thinking || '-') + ') / 감염병 경보 모델: ' + (models.lite || '-');
+        '모델: ' + (models.deep || '-') + ' (thinking=' + (models.thinking || 'low') + ', 503 우회=' + (models.fallback || '-') + ') / 경보: ' + (models.lite || '-') +
+        ' · 4단계 컷오프: 필독≥' + cutoffs.must_read + ', 주목≥' + cutoffs.high + ', 참고≥' + cutoffs.medium;
       document.getElementById('logTableBody').innerHTML = (data.logs || []).map(l => (
         '<tr>' +
           '<td style="white-space:nowrap;">' + esc(l.timestamp) + '</td>' +
           '<td>' + esc(l.source) + '</td>' +
-          '<td><span class="badge ' + (l.status === 'Success' ? 'b-oa' : (l.status === 'Partial' ? 'b-medium' : 'b-high')) + '">' + esc(l.status) + '</span></td>' +
+          '<td><span class="badge ' + (l.status === 'Success' ? 'b-oa' : (l.status === 'Partial' ? 'b-high' : 'b-must')) + '">' + esc(l.status) + '</span></td>' +
           '<td style="white-space:nowrap;">' + l.fetched_count + ' / +' + l.new_count + ' / ' + l.duplicate_count + '</td>' +
           '<td>' + esc(l.error_message) + '</td>' +
         '</tr>'
@@ -1294,7 +1256,7 @@
         renderGuidelines();
       });
 
-      ['paperMonth', 'paperSource', 'paperCat', 'paperImp', 'paperSearch'].forEach(id => {
+      ['paperMonth', 'paperSource', 'paperCat', 'paperImp', 'paperSort', 'paperSearch'].forEach(id => {
         document.getElementById(id).addEventListener('input', () => { state.paperLimit = 30; renderPapers(); });
         document.getElementById(id).addEventListener('change', () => { state.paperLimit = 30; renderPapers(); });
       });
