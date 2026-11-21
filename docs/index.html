@@ -1,0 +1,1335 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>임상미생물 주간 브리핑 v8.0</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #f4f6f9;
+      --surface: #ffffff;
+      --surface-soft: #f8fafc;
+      --border: #e2e8f0;
+      --text: #0f172a;
+      --text-muted: #475569;
+      --text-light: #64748b;
+      --primary: #1d4ed8;
+      --primary-soft: #eff6ff;
+      --purple: #7c3aed;
+      --purple-soft: #f5f3ff;
+      --red: #dc2626;
+      --red-soft: #fef2f2;
+      --amber: #d97706;
+      --amber-soft: #fffbeb;
+      --green: #059669;
+      --green-soft: #ecfdf5;
+      --teal: #0d9488;
+      --teal-soft: #f0fdfa;
+      --radius: 12px;
+      --shadow: 0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.55;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: var(--primary); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* Header */
+    .topbar {
+      background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%);
+      color: #fff;
+      padding: 16px 20px 0;
+      position: sticky;
+      top: 0;
+      z-index: 40;
+      box-shadow: 0 2px 10px rgba(15, 23, 42, 0.14);
+    }
+    .topbar-inner {
+      max-width: 1180px;
+      margin: 0 auto;
+    }
+    .brand-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+    .brand-title {
+      font-size: 1.22rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .brand-sub {
+      font-size: 0.78rem;
+      color: #cbd5e1;
+      margin-top: 2px;
+    }
+    .meta-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .status-pill {
+      background: rgba(255, 255, 255, 0.12);
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      color: #e2e8f0;
+      border-radius: 999px;
+      padding: 5px 11px;
+      font-size: 0.76rem;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .status-pill:hover { background: rgba(255, 255, 255, 0.2); }
+    .dot-ok { width: 7px; height: 7px; border-radius: 50%; background: #34d399; display: inline-block; }
+
+    /* 4 Fixed Tabs */
+    .tab-bar {
+      display: flex;
+      gap: 4px;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    .tab-bar::-webkit-scrollbar { display: none; }
+    .tab-btn {
+      background: transparent;
+      border: none;
+      color: #cbd5e1;
+      padding: 10px 16px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      border-bottom: 3px solid transparent;
+      white-space: nowrap;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .tab-btn:hover { color: #fff; }
+    .tab-btn.active {
+      color: #fff;
+      border-bottom-color: #38bdf8;
+    }
+    .tab-count {
+      font-size: 0.72rem;
+      background: rgba(255, 255, 255, 0.15);
+      padding: 1px 6px;
+      border-radius: 999px;
+      margin-left: 5px;
+      font-weight: 600;
+    }
+
+    /* Main Container */
+    .container {
+      max-width: 1180px;
+      margin: 18px auto 48px;
+      padding: 0 16px;
+    }
+    .tab-pane { display: none; }
+    .tab-pane.active { display: block; }
+
+    /* Cards & Panels */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 16px 18px;
+      margin-bottom: 16px;
+    }
+    .section-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+    .section-title {
+      font-size: 1rem;
+      font-weight: 800;
+      color: var(--text);
+      margin: 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .section-sub {
+      font-size: 0.8rem;
+      color: var(--text-light);
+    }
+
+    /* Summary Grid (Panel A) */
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .kpi-card {
+      background: var(--surface-soft);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 13px 14px;
+    }
+    .kpi-label {
+      font-size: 0.76rem;
+      font-weight: 700;
+      color: var(--text-light);
+      margin-bottom: 6px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .kpi-value {
+      font-size: 1.35rem;
+      font-weight: 800;
+      color: var(--text);
+      letter-spacing: -0.02em;
+    }
+    .kpi-meta {
+      font-size: 0.79rem;
+      color: var(--text-muted);
+      margin-top: 5px;
+    }
+
+    /* Badges */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 999px;
+      white-space: nowrap;
+    }
+    .b-high { background: var(--red-soft); color: var(--red); border: 1px solid #fecaca; }
+    .b-medium { background: var(--amber-soft); color: #b45309; border: 1px solid #fde68a; }
+    .b-low { background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; }
+    .b-domestic { background: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe; }
+    .b-overseas { background: var(--purple-soft); color: #6d28d9; border: 1px solid #ddd6fe; }
+    .b-source { background: #f1f5f9; color: #334155; border: 1px solid #e2e8f0; }
+    .b-cat { background: var(--teal-soft); color: #0f766e; border: 1px solid #99f6e4; }
+    .b-oa { background: var(--green-soft); color: #047857; border: 1px solid #a7f3d0; }
+    .b-abs { background: #f8fafc; color: #64748b; border: 1px solid #e2e8f0; }
+
+    /* Controls & Filters */
+    .toolbar {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+    .input, .select {
+      background: #fff;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      padding: 7px 11px;
+      font-size: 0.85rem;
+      color: var(--text);
+      outline: none;
+    }
+    .input:focus, .select:focus { border-color: var(--primary); }
+    .input-search { flex: 1; min-width: 190px; }
+    .btn {
+      background: #fff;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      padding: 7px 12px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--text);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .btn:hover { background: #f8fafc; }
+    .btn-primary { background: var(--primary); color: #fff; border-color: var(--primary); }
+    .btn-primary:hover { background: #1e40af; }
+    .btn-active { background: var(--primary-soft); color: var(--primary); border-color: #93c5fd; }
+    .pill-group {
+      display: inline-flex;
+      background: #e2e8f0;
+      padding: 3px;
+      border-radius: 10px;
+      gap: 3px;
+    }
+    .pill-btn {
+      border: none;
+      background: transparent;
+      padding: 6px 13px;
+      border-radius: 8px;
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: #475569;
+      cursor: pointer;
+    }
+    .pill-btn.active {
+      background: #fff;
+      color: var(--primary);
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+    }
+
+    /* Accordion Item Card */
+    .item-list { display: flex; flex-direction: column; gap: 10px; }
+    .acc-item {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: #fff;
+      overflow: hidden;
+      transition: border-color 0.15s;
+    }
+    .acc-item:hover { border-color: #94a3b8; }
+    .acc-header {
+      padding: 13px 15px;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 10px;
+    }
+    .acc-main { flex: 1; min-width: 0; }
+    .acc-badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      align-items: center;
+      margin-bottom: 5px;
+    }
+    .acc-date { font-size: 0.75rem; color: var(--text-light); margin-left: auto; }
+    .acc-title {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--text);
+      margin: 0 0 4px;
+      word-break: keep-all;
+    }
+    .acc-preview {
+      font-size: 0.83rem;
+      color: var(--text-muted);
+      display: -webkit-box;
+      -webkit-line-clamp: 1;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .acc-right {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+    .bm-btn {
+      border: none;
+      background: transparent;
+      font-size: 1.15rem;
+      cursor: pointer;
+      color: #cbd5e1;
+      padding: 2px 4px;
+      line-height: 1;
+    }
+    .bm-btn.saved { color: #eab308; }
+    .chev {
+      font-size: 0.78rem;
+      color: var(--text-light);
+      transition: transform 0.2s;
+    }
+    .acc-item.open .chev { transform: rotate(180deg); }
+    .acc-body {
+      display: none;
+      padding: 0 15px 15px;
+      border-top: 1px solid #f1f5f9;
+      background: #fcfdff;
+    }
+    .acc-item.open .acc-body { display: block; }
+    .orig-title {
+      font-size: 0.8rem;
+      color: var(--text-light);
+      margin: 10px 0;
+      font-style: italic;
+    }
+    .box-fact {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-left: 3px solid #334155;
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 0.87rem;
+      color: #1e293b;
+      white-space: pre-line;
+      margin-bottom: 10px;
+    }
+    .box-ai {
+      background: var(--primary-soft);
+      border: 1px solid #bfdbfe;
+      border-left: 3px solid var(--primary);
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 0.86rem;
+      color: #1e3a8a;
+      margin-bottom: 10px;
+    }
+    .box-reason {
+      font-size: 0.79rem;
+      color: #475569;
+      background: #f8fafc;
+      border: 1px dashed #cbd5e1;
+      border-radius: 8px;
+      padding: 7px 10px;
+      margin-bottom: 10px;
+    }
+    .box-label {
+      font-size: 0.72rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
+      margin-bottom: 4px;
+      display: block;
+    }
+    .acc-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      font-size: 0.78rem;
+      color: var(--text-light);
+    }
+
+    /* Chart */
+    .chart-wrap {
+      position: relative;
+      height: 330px;
+      width: 100%;
+    }
+    .hai-strip {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .hai-mini {
+      background: var(--surface-soft);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 0.78rem;
+    }
+
+    /* 52-Week Chronicle */
+    .chron-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 10px 12px;
+      border-bottom: 1px solid #f1f5f9;
+      cursor: pointer;
+      transition: background 0.12s;
+    }
+    .chron-row:hover { background: var(--primary-soft); }
+    .chron-wk {
+      font-weight: 800;
+      font-size: 0.82rem;
+      color: var(--primary);
+      min-width: 78px;
+      flex-shrink: 0;
+    }
+    .chron-content { flex: 1; font-size: 0.84rem; }
+    .chron-empty { color: #94a3b8; font-size: 0.8rem; }
+
+    /* Modal */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.55);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      padding: 16px;
+    }
+    .modal-backdrop.show { display: flex; }
+    .modal {
+      background: #fff;
+      border-radius: 14px;
+      max-width: 760px;
+      width: 100%;
+      max-height: 82vh;
+      overflow-y: auto;
+      padding: 18px 20px;
+      box-shadow: 0 20px 45px rgba(15, 23, 42, 0.25);
+    }
+    .log-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.78rem;
+    }
+    .log-table th, .log-table td {
+      border-bottom: 1px solid var(--border);
+      padding: 7px 6px;
+      text-align: left;
+      vertical-align: top;
+    }
+    .log-table th { background: var(--surface-soft); color: var(--text-light); }
+
+    .empty-state {
+      text-align: center;
+      padding: 30px 16px;
+      color: var(--text-light);
+      font-size: 0.88rem;
+    }
+    .footer-note {
+      text-align: center;
+      font-size: 0.76rem;
+      color: var(--text-light);
+      margin-top: 24px;
+      padding-top: 14px;
+      border-top: 1px solid var(--border);
+    }
+
+    @media (max-width: 820px) {
+      .grid-3 { grid-template-columns: 1fr; }
+      .hai-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .chart-wrap { height: 270px; }
+      .brand-title { font-size: 1.06rem; }
+      .tab-btn { padding: 9px 11px; font-size: 0.84rem; }
+      .card { padding: 13px 14px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand-row">
+        <div>
+          <div class="brand-title">임상미생물 주간 브리핑</div>
+          <div class="brand-sub" id="brandSub">v8.0 · GitHub Pages · 데이터 불러오는 중...</div>
+        </div>
+        <div class="meta-actions">
+          <button class="status-pill" id="btnLogs" type="button" title="최근 자동 수집 실행 이력 보기">
+            <span class="dot-ok"></span>
+            <span id="statusText">수집 로그</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 4탭 고정 구조 -->
+      <nav class="tab-bar" role="tablist">
+        <button class="tab-btn active" data-tab="weekly" type="button">1. 주간 브리핑</button>
+        <button class="tab-btn" data-tab="outbreak" type="button">2. 감염병 정보 <span class="tab-count" id="cntOutbreak">0</span></button>
+        <button class="tab-btn" data-tab="guideline" type="button">3. 가이드라인 <span class="tab-count" id="cntGuideline">0</span></button>
+        <button class="tab-btn" data-tab="paper" type="button">4. 논문 <span class="tab-count" id="cntPaper">0</span></button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- ==================== 탭 1: 주간 브리핑 ==================== -->
+    <section id="tab-weekly" class="tab-pane active">
+      <div class="toolbar">
+        <button class="btn" id="btnPrevWeek" type="button">◀ 이전 주</button>
+        <select class="select" id="weekSelect" style="font-weight:700; min-width:140px;"></select>
+        <button class="btn" id="btnNextWeek" type="button">다음 주 ▶</button>
+        <span class="section-sub" id="weekSummaryMeta"></span>
+      </div>
+
+      <!-- 패널 A: 국내 CRE + 4급 HAI + 표본감시 1줄 요약 -->
+      <div class="card">
+        <div class="section-head">
+          <h2 class="section-title">패널 A · 국내 감염병·내성균 핵심 요약</h2>
+          <span class="section-sub" id="survUpdatedText"></span>
+        </div>
+        <div class="grid-3" id="panelAGrid"></div>
+      </div>
+
+      <!-- 이상 급증 및 국내외 긴급 경보 -->
+      <div class="card">
+        <div class="section-head">
+          <h2 class="section-title">이상 급증 및 국내·해외 감염병 경보</h2>
+          <span class="section-sub">국내(KDCA) · 해외(WHO DONs) 배지 구분</span>
+        </div>
+        <div id="weeklyAlertsBox" class="item-list"></div>
+      </div>
+
+      <!-- 필독 논문 TOP 5 -->
+      <div class="card">
+        <div class="section-head">
+          <h2 class="section-title">해당 주차 필독 논문 TOP 5</h2>
+          <span class="section-sub" id="top5Subtitle">Strict High 기준 엄선 · 클릭 시 원문 요약 및 AI 임상 포인트 펼침</span>
+        </div>
+        <div id="weeklyTop5Box" class="item-list"></div>
+      </div>
+
+      <!-- 해당 주차 가이드라인 -->
+      <div class="card" id="weeklyGuideCard" style="display:none;">
+        <div class="section-head">
+          <h2 class="section-title">해당 주차 학회 가이드라인</h2>
+          <span class="section-sub">IDSA · ESCMID 공식 지침</span>
+        </div>
+        <div id="weeklyGuideBox" class="item-list"></div>
+      </div>
+    </section>
+
+    <!-- ==================== 탭 2: 감염병 정보 ==================== -->
+    <section id="tab-outbreak" class="tab-pane">
+      <div class="toolbar" style="justify-content: space-between;">
+        <div class="pill-group">
+          <button class="pill-btn active" id="subViewCharts" type="button">통합 감시 그래프 · 월별 경보 (패널 A·B·C)</button>
+          <button class="pill-btn" id="subViewChron" type="button">2026년 52주 감염병 1줄 연대기</button>
+        </div>
+      </div>
+
+      <!-- 서브 뷰 1: 패널 A, B, C -->
+      <div id="outbreakChartsView">
+        <div class="card">
+          <div class="section-head">
+            <div>
+              <h2 class="section-title">패널 A · 2026년 4급 HAI 5종 및 2급 CRE 통합 감시 그래프</h2>
+              <div class="section-sub">좌측 Y축: 4급 의료관련감염병 분리율(1,000재원일당) · 우측 Y축: 2급 CRE 월별 신고건수(보라색 점선)</div>
+            </div>
+            <div class="pill-group">
+              <button class="pill-btn active" id="btnHaiBlood" type="button">혈액 분리율</button>
+              <button class="pill-btn" id="btnHaiNonBlood" type="button">혈액외 분리율</button>
+            </div>
+          </div>
+          <div class="chart-wrap">
+            <canvas id="dualAxisChart"></canvas>
+          </div>
+          <div class="hai-strip" id="haiMiniStrip"></div>
+        </div>
+
+        <div class="card">
+          <div class="section-head">
+            <h2 class="section-title">패널 B · 국내 표본감시 주간소식지 및 긴급 경보 (KDCA)</h2>
+            <span class="section-sub" id="kdcaCountLabel"></span>
+          </div>
+          <div id="panelBList" class="item-list"></div>
+        </div>
+
+        <div class="card">
+          <div class="section-head">
+            <h2 class="section-title">패널 C · 해외 감염병 발생 경보 (WHO DONs)</h2>
+            <span class="section-sub" id="whoCountLabel"></span>
+          </div>
+          <div id="panelCList" class="item-list"></div>
+        </div>
+      </div>
+
+      <!-- 서브 뷰 2: 2026년 52주 연대기 -->
+      <div id="outbreakChronView" style="display:none;">
+        <div class="card">
+          <div class="section-head">
+            <div>
+              <h2 class="section-title">2026년 52주 감염병 1줄 연대기</h2>
+              <div class="section-sub">논문 제외 감염병 전용 뷰 · 주차를 클릭하면 해당 주차 주간 브리핑으로 이동합니다.</div>
+            </div>
+            <label style="font-size:0.84rem; font-weight:600; display:flex; align-items:center; gap:6px; cursor:pointer;">
+              <input type="checkbox" id="chkChronOnlyActive" checked />
+              특이사항 있는 주만 보기
+            </label>
+          </div>
+          <div id="chronicleList"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== 탭 3: 가이드라인 ==================== -->
+    <section id="tab-guideline" class="tab-pane">
+      <div class="card">
+        <div class="section-head">
+          <h2 class="section-title">2026년 임상미생물·감염병 학회 가이드라인</h2>
+          <span class="section-sub" id="guideFilterMeta"></span>
+        </div>
+        <div class="toolbar">
+          <input class="input input-search" id="guideSearch" type="search" placeholder="가이드라인 제목·요약 키워드 검색 (예: CRE, 뇌염, beta-lactam)..." />
+          <select class="select" id="guideSource"></select>
+          <select class="select" id="guideCat"></select>
+          <button class="btn" id="guideBmOnly" type="button">★ 북마크만</button>
+        </div>
+        <div id="guideList" class="item-list"></div>
+      </div>
+    </section>
+
+    <!-- ==================== 탭 4: 논문 ==================== -->
+    <section id="tab-paper" class="tab-pane">
+      <div class="card">
+        <div class="section-head">
+          <h2 class="section-title">4대 임상미생물 학술지 논문 (JCM · CMI · CID · ACM)</h2>
+          <span class="section-sub" id="paperFilterMeta"></span>
+        </div>
+        <div class="toolbar">
+          <select class="select" id="paperMonth"></select>
+          <select class="select" id="paperSource"></select>
+          <select class="select" id="paperCat"></select>
+          <select class="select" id="paperImp">
+            <option value="">중요도 전체</option>
+            <option value="High">High (필독)</option>
+            <option value="Medium">Medium</option>
+            <option value="Low">Low</option>
+          </select>
+          <input class="input input-search" id="paperSearch" type="search" placeholder="제목·초록 요약·균종·PMID 검색..." />
+          <button class="btn" id="paperBmOnly" type="button">★ 북마크만</button>
+        </div>
+        <div id="paperList" class="item-list"></div>
+        <div style="text-align:center; margin-top:14px;">
+          <button class="btn" id="btnPaperMore" type="button" style="display:none;">논문 더 보기</button>
+        </div>
+      </div>
+    </section>
+
+    <div class="footer-note">
+      본 대시보드는 공개 학술 초록(PubMed·Crossref) 및 공식 감염병 통계(KDCA·WHO) 기반 참고 요약입니다.
+      AI 해석은 원문 사실과 분리 표기되며, 최종 임상·검사실 의사결정 시 반드시 원문을 확인하세요.
+      (북마크는 현재 사용 중인 기기 브라우저에 개인별로 저장됩니다.)
+    </div>
+  </main>
+
+  <!-- 수집 로그 모달 -->
+  <div class="modal-backdrop" id="logModal">
+    <div class="modal">
+      <div class="section-head">
+        <h3 class="section-title">시스템 수집 · 요약 실행 로그</h3>
+        <button class="btn" id="btnCloseLogs" type="button">닫기</button>
+      </div>
+      <div class="section-sub" id="logModelInfo" style="margin-bottom:10px;"></div>
+      <div style="overflow-x:auto;">
+        <table class="log-table">
+          <thead>
+            <tr>
+              <th>시각</th>
+              <th>구분</th>
+              <th>상태</th>
+              <th>조회/신규/중복</th>
+              <th>비고</th>
+            </tr>
+          </thead>
+          <tbody id="logTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const BM_STORAGE_KEY = 'cmb_personal_bookmarks_v8';
+    const state = {
+      data: null,
+      activeTab: 'weekly',
+      selectedWeek: '',
+      haiMetric: 'blood',
+      chart: null,
+      guideBmOnly: false,
+      paperBmOnly: false,
+      paperLimit: 30,
+      bookmarks: new Set()
+    };
+
+    function esc(s) {
+      return String(s || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function loadBookmarks(items) {
+      try {
+        const raw = localStorage.getItem(BM_STORAGE_KEY);
+        if (raw) {
+          state.bookmarks = new Set(JSON.parse(raw));
+          return;
+        }
+      } catch (e) {}
+      // 최초 접속 시 시트 기본 북마크를 개인 저장소로 초기 복제
+      const initSet = new Set();
+      (items || []).forEach(it => { if (it.bookmarked) initSet.add(it.uid); });
+      state.bookmarks = initSet;
+      saveBookmarks();
+    }
+
+    function saveBookmarks() {
+      try {
+        localStorage.setItem(BM_STORAGE_KEY, JSON.stringify(Array.from(state.bookmarks)));
+      } catch (e) {}
+    }
+
+    function toggleBookmark(uid, btnEl) {
+      if (state.bookmarks.has(uid)) state.bookmarks.delete(uid);
+      else state.bookmarks.add(uid);
+      saveBookmarks();
+      const saved = state.bookmarks.has(uid);
+      document.querySelectorAll('.bm-btn[data-uid="' + CSS.escape(uid) + '"]').forEach(el => {
+        el.classList.toggle('saved', saved);
+        el.textContent = saved ? '★' : '☆';
+      });
+      if (state.guideBmOnly && state.activeTab === 'guideline') renderGuidelines();
+      if (state.paperBmOnly && state.activeTab === 'paper') renderPapers();
+    }
+
+    function impBadge(imp) {
+      const v = String(imp || 'Medium');
+      const cls = v === 'High' ? 'b-high' : (v === 'Low' ? 'b-low' : 'b-medium');
+      return '<span class="badge ' + cls + '">' + esc(v) + '</span>';
+    }
+
+    function accessBadge(status) {
+      const s = String(status || '');
+      const isOa = /open access|공식|표본감시|경보/i.test(s);
+      return '<span class="badge ' + (isOa ? 'b-oa' : 'b-abs') + '">' + esc(s || 'Public') + '</span>';
+    }
+
+    function regionBadgeHtml(item) {
+      const rb = item.region_badge || '';
+      if (!rb) return '';
+      const cls = rb.startsWith('국내') ? 'b-domestic' : 'b-overseas';
+      return '<span class="badge ' + cls + '">' + esc(rb) + '</span>';
+    }
+
+    function renderAccordionCard(item, opts) {
+      const options = opts || {};
+      const saved = state.bookmarks.has(item.uid);
+      const previewText = (item.fact_summary_ko || item.title_orig || '').replace(/\n+/g, ' ');
+      const showOrig = item.title_orig && item.title_orig !== item.title_ko;
+      const metaTag = item.summary_meta ? ('요약 엔진: ' + item.summary_meta) : '초기 MVP 요약';
+      const idLinks = [];
+      if (item.pmid) idLinks.push('PMID: ' + esc(item.pmid));
+      if (item.doi) idLinks.push('DOI: ' + esc(item.doi));
+
+      return (
+        '<article class="acc-item' + (options.openByDefault ? ' open' : '') + '">' +
+          '<div class="acc-header" onclick="this.parentElement.classList.toggle(\'open\')">' +
+            '<div class="acc-main">' +
+              '<div class="acc-badges">' +
+                impBadge(item.importance) +
+                (item.content_type === 'outbreak' ? regionBadgeHtml(item) : '<span class="badge b-source">' + esc(item.source) + '</span>') +
+                '<span class="badge b-cat">' + esc(item.topic_category) + '</span>' +
+                '<span class="acc-date">' + esc(item.pub_date) + (item.week_key ? ' · ' + esc(item.week_key) : '') + '</span>' +
+              '</div>' +
+              '<h3 class="acc-title">' + esc(item.title_ko) + '</h3>' +
+              '<div class="acc-preview">' + esc(previewText) + '</div>' +
+            '</div>' +
+            '<div class="acc-right">' +
+              '<button class="bm-btn' + (saved ? ' saved' : '') + '" data-uid="' + esc(item.uid) + '" type="button" title="개인 북마크" onclick="event.stopPropagation(); toggleBookmark(\'' + esc(item.uid).replace(/'/g, "\\'") + '\', this)">' + (saved ? '★' : '☆') + '</button>' +
+              '<span class="chev">▼</span>' +
+            '</div>' +
+          '</div>' +
+          '<div class="acc-body">' +
+            (showOrig ? '<div class="orig-title">' + esc(item.title_orig) + '</div>' : '<div style="height:10px"></div>') +
+            '<div class="box-fact"><span class="box-label">원문 사실 요약</span>' + esc(item.fact_summary_ko || '요약 내용 없음') + '</div>' +
+            (item.ai_clinical_note ? '<div class="box-ai"><span class="box-label">임상·검사실 적용 포인트 (AI 참고 해석)</span>' + esc(item.ai_clinical_note) + '</div>' : '') +
+            (item.importance_reason ? '<div class="box-reason"><strong>중요도 판정 근거:</strong> ' + esc(item.importance_reason) + '</div>' : '') +
+            '<div class="acc-footer">' +
+              '<div>' + accessBadge(item.access_status) + (idLinks.length ? ' · ' + idLinks.join(' · ') : '') + ' · <span style="opacity:0.75">' + esc(metaTag) + '</span></div>' +
+              (item.source_url ? '<a href="' + esc(item.source_url) + '" target="_blank" rel="noopener noreferrer" style="font-weight:700;">원문 바로가기 ↗</a>' : '') +
+            '</div>' +
+          '</div>' +
+        '</article>'
+      );
+    }
+
+    function fmtPct(v) {
+      if (v === null || v === undefined || isNaN(v)) return '-';
+      return (v > 0 ? '+' : '') + v + '%';
+    }
+
+    function switchTab(tabId) {
+      state.activeTab = tabId;
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tabId));
+      document.querySelectorAll('.tab-pane').forEach(p => p.classList.toggle('active', p.id === 'tab-' + tabId));
+      if (tabId === 'outbreak') renderDualAxisChart();
+    }
+
+    function jumpToWeek(weekKey) {
+      state.selectedWeek = weekKey;
+      const sel = document.getElementById('weekSelect');
+      if (sel) sel.value = weekKey;
+      renderWeeklyBriefing();
+      switchTab('weekly');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    /* ==================== 탭 1 렌더링 ==================== */
+    function renderWeeklyBriefing() {
+      const items = state.data.items || [];
+      const surv = state.data.surveillance || {};
+      const wk = state.selectedWeek;
+      const weekItems = items.filter(x => x.week_key === wk);
+      const weekPapers = weekItems.filter(x => x.content_type === 'paper');
+      const weekGuides = weekItems.filter(x => x.content_type === 'guideline');
+      const weekOutbreaks = weekItems.filter(x => x.content_type === 'outbreak');
+
+      document.getElementById('weekSummaryMeta').textContent =
+        wk + ' 수집분: 논문 ' + weekPapers.length + '편 · 가이드라인 ' + weekGuides.length + '건 · 감염병 경보 ' + weekOutbreaks.length + '건';
+      document.getElementById('survUpdatedText').textContent =
+        surv.updatedAt ? ('전수감시 기준 갱신: ' + surv.updatedAt.slice(0, 10)) : '';
+
+      // 패널 A: 1) 국내 CRE 동향 (필수)
+      const cre = (surv.mdrCards || []).find(c => c.code === 'CRE');
+      const vrsa = (surv.mdrCards || []).find(c => c.code === 'VRSA');
+      const creHtml = cre ? (
+        '<div class="kpi-card">' +
+          '<div class="kpi-label"><span>국내 CRE 월별 동향 (필수)</span><span class="badge b-overseas">' + esc(cre.period) + '</span></div>' +
+          '<div class="kpi-value" style="color:var(--purple)">' + Number(cre.count).toLocaleString() + '건</div>' +
+          '<div class="kpi-meta">최근 4개월 평균(' + (cre.avg4 !== null ? Number(cre.avg4).toLocaleString() : '-') + '건) 대비 <strong>' + fmtPct(cre.vsAvg4Pct) + '</strong> · 전년 동월 대비 <strong>' + fmtPct(cre.vsYoyPct) + '</strong>' +
+          (vrsa ? '<br/>VRSA 동월 신고: <strong>' + vrsa.count + '건</strong>' : '') + '</div>' +
+        '</div>'
+      ) : '<div class="kpi-card"><div class="kpi-label">국내 CRE 동향</div><div class="kpi-meta">데이터 없음</div></div>';
+
+      // 패널 A: 2) 4급 HAI 5종 변동 유무 (특이사항 없을 경우 '특이사항 없음' 명시)
+      const haiCards = surv.haiCards || [];
+      const notableHai = [];
+      haiCards.forEach(h => {
+        if (h.bloodDeltaPct !== null && Math.abs(h.bloodDeltaPct) >= 15) {
+          notableHai.push(h.pathogen + ' 혈액 ' + fmtPct(h.bloodDeltaPct));
+        }
+        if (h.nonBloodDeltaPct !== null && Math.abs(h.nonBloodDeltaPct) >= 15) {
+          notableHai.push(h.pathogen + ' 혈액외 ' + fmtPct(h.nonBloodDeltaPct));
+        }
+      });
+      const haiPeriod = haiCards.length ? haiCards[0].period : '-';
+      const haiHtml = (
+        '<div class="kpi-card">' +
+          '<div class="kpi-label"><span>4급 HAI 5종 전월 대비 변동</span><span class="badge b-source">' + esc(haiPeriod) + '</span></div>' +
+          '<div class="kpi-value" style="font-size:1.05rem; color:' + (notableHai.length ? 'var(--amber)' : 'var(--green)') + ';">' +
+            (notableHai.length ? notableHai.slice(0, 3).join(' · ') : '특이사항 없음') +
+          '</div>' +
+          '<div class="kpi-meta">MRSA·VRE·MRAB·MRPA·C.auris 기준 (±15% 이상 변동 시 강조)</div>' +
+        '</div>'
+      );
+
+      // 패널 A: 3) 국내 표본감시 주간 1줄 요약
+      const allSentinels = items.filter(x => x.source.indexOf('표본감시') !== -1);
+      const matchedSentinel = weekOutbreaks.find(x => x.source.indexOf('표본감시') !== -1) || allSentinels[0];
+      const sentinelLine = matchedSentinel
+        ? (matchedSentinel.fact_summary_ko || matchedSentinel.title_ko).split(/\n|\.\s/)[0].replace(/^•\s*/, '')
+        : '해당 주차 표본감시 주간소식지 없음';
+      const sentinelHtml = (
+        '<div class="kpi-card">' +
+          '<div class="kpi-label"><span>국내 표본감시 주간 1줄 요약</span><span class="badge b-domestic">' + esc(matchedSentinel ? matchedSentinel.week_key : '-') + '</span></div>' +
+          '<div style="font-size:0.86rem; font-weight:700; color:var(--text); margin-bottom:4px;">' + esc(sentinelLine) + '</div>' +
+          '<div class="kpi-meta">' + (matchedSentinel ? ('<a href="' + esc(matchedSentinel.source_url) + '" target="_blank" rel="noopener">KDCA 표본감시 원문 ↗</a>') : '') + '</div>' +
+        '</div>'
+      );
+
+      document.getElementById('panelAGrid').innerHTML = creHtml + haiHtml + sentinelHtml;
+
+      // 이상 급증 및 국내외 경보
+      const alertCards = [];
+      (surv.surgeAlerts || []).forEach(al => {
+        const cls = al.level === 'critical' ? 'b-high' : 'b-medium';
+        alertCards.push(
+          '<div class="acc-item">' +
+            '<div class="acc-header" style="cursor:default;">' +
+              '<div class="acc-main">' +
+                '<div class="acc-badges">' +
+                  '<span class="badge ' + cls + '">' + (al.level === 'critical' ? '긴급 감지' : '급증 주의') + '</span>' +
+                  '<span class="badge b-domestic">국내 · KDCA</span>' +
+                  '<span class="acc-date">' + esc(al.period) + '</span>' +
+                '</div>' +
+                '<h3 class="acc-title">' + esc(al.disease) + ' — ' + esc(al.reason) + '</h3>' +
+              '</div>' +
+            '</div>' +
+          '</div>'
+        );
+      });
+      weekOutbreaks.forEach(ob => alertCards.push(renderAccordionCard(ob)));
+      document.getElementById('weeklyAlertsBox').innerHTML = alertCards.length
+        ? alertCards.join('')
+        : '<div class="empty-state">해당 주차에 등록된 국내·해외 감염병 경보가 없습니다.</div>';
+
+      // 필독 논문 TOP 5
+      const highPapers = weekPapers.filter(p => p.importance === 'High');
+      const medPapers = weekPapers.filter(p => p.importance === 'Medium');
+      const top5 = highPapers.slice(0, 5);
+      const displayTop = top5.length > 0 ? top5 : medPapers.slice(0, 5);
+      document.getElementById('top5Subtitle').textContent =
+        highPapers.length > 0
+          ? ('해당 주차 High ' + highPapers.length + '편 중 상위 ' + displayTop.length + '편 노출 · 클릭 시 상세 요약 펼침')
+          : ('해당 주차 Strict High 논문 없음 (참고용 Medium 상위 ' + displayTop.length + '편 표시)');
+      document.getElementById('weeklyTop5Box').innerHTML = displayTop.length
+        ? displayTop.map(p => renderAccordionCard(p)).join('')
+        : '<div class="empty-state">해당 주차에 수집된 논문이 없습니다.</div>';
+
+      // 해당 주차 가이드라인
+      const gCard = document.getElementById('weeklyGuideCard');
+      if (weekGuides.length > 0) {
+        gCard.style.display = 'block';
+        document.getElementById('weeklyGuideBox').innerHTML = weekGuides.map(g => renderAccordionCard(g)).join('');
+      } else {
+        gCard.style.display = 'none';
+      }
+    }
+
+    /* ==================== 탭 2 렌더링 (이중 Y축 그래프 & 52주 연대기) ==================== */
+    function renderDualAxisChart() {
+      const surv = state.data.surveillance || {};
+      const year = surv.year || '2026';
+      const labels = [];
+      for (let m = 1; m <= 12; m++) labels.push(year + '-' + String(m).padStart(2, '0'));
+
+      const palette = {
+        'MRSA': '#ef4444',
+        'VRE': '#f59e0b',
+        'MRAB': '#0ea5e9',
+        'MRPA': '#10b981',
+        'C.AURIS': '#ec4899'
+      };
+
+      const datasets = [];
+      (surv.haiAnnualSeries || []).forEach(series => {
+        const ptMap = {};
+        (series.points || []).forEach(pt => { ptMap[pt.period] = state.haiMetric === 'blood' ? pt.blood : pt.nonBlood; });
+        datasets.push({
+          label: series.pathogen + (state.haiMetric === 'blood' ? ' (혈액)' : ' (혈액외)'),
+          data: labels.map(ym => (ptMap[ym] !== undefined ? ptMap[ym] : null)),
+          borderColor: palette[series.pathogen] || '#64748b',
+          backgroundColor: palette[series.pathogen] || '#64748b',
+          yAxisID: 'yHai',
+          tension: 0.25,
+          borderWidth: 2,
+          pointRadius: 3
+        });
+      });
+
+      const creMap = {};
+      ((surv.creSeries && surv.creSeries.current) || []).forEach(pt => { creMap[pt.period] = pt.count; });
+      datasets.push({
+        label: '2급 CRE 월별 신고건수 (우측 축)',
+        data: labels.map(ym => (creMap[ym] !== undefined ? creMap[ym] : null)),
+        borderColor: '#7c3aed',
+        backgroundColor: 'rgba(124, 58, 237, 0.1)',
+        borderDash: [6, 4],
+        yAxisID: 'yCre',
+        tension: 0.25,
+        borderWidth: 2.6,
+        pointRadius: 3.5
+      });
+
+      const ctx = document.getElementById('dualAxisChart').getContext('2d');
+      if (state.chart) state.chart.destroy();
+      state.chart = new Chart(ctx, {
+        type: 'line',
+        data: { labels: labels.map(x => x.slice(5) + '월'), datasets: datasets },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } }
+          },
+          scales: {
+            yHai: {
+              type: 'linear',
+              position: 'left',
+              beginAtZero: true,
+              title: { display: true, text: '4급 HAI (' + (state.haiMetric === 'blood' ? '혈액' : '혈액외') + ' 분리율)' }
+            },
+            yCre: {
+              type: 'linear',
+              position: 'right',
+              beginAtZero: true,
+              grid: { drawOnChartArea: false },
+              title: { display: true, text: '2급 CRE 신고건수 (건)', color: '#7c3aed' },
+              ticks: { color: '#7c3aed' }
+            }
+          }
+        }
+      });
+
+      // 하단 HAI 5종 요약 카드
+      document.getElementById('haiMiniStrip').innerHTML = (surv.haiCards || []).map(h => {
+        const val = state.haiMetric === 'blood' ? h.bloodRate : h.nonBloodRate;
+        const delta = state.haiMetric === 'blood' ? h.bloodDeltaPct : h.nonBloodDeltaPct;
+        return (
+          '<div class="hai-mini">' +
+            '<div style="font-weight:800; color:' + (palette[h.pathogen] || '#334155') + '">' + esc(h.pathogen) + '</div>' +
+            '<div style="font-size:1rem; font-weight:800;">' + (val !== null ? val : '-') + '</div>' +
+            '<div style="color:var(--text-light); font-size:0.72rem;">전월비 ' + fmtPct(delta) + ' (' + esc(h.period) + ')</div>' +
+          '</div>'
+        );
+      }).join('');
+    }
+
+    function renderOutbreakLists() {
+      const outbreaks = (state.data.items || []).filter(x => x.content_type === 'outbreak');
+      const kdca = outbreaks.filter(x => x.source.indexOf('KDCA') !== -1);
+      const who = outbreaks.filter(x => x.source.indexOf('WHO') !== -1);
+
+      document.getElementById('kdcaCountLabel').textContent = '총 ' + kdca.length + '건';
+      document.getElementById('whoCountLabel').textContent = '총 ' + who.length + '건';
+      document.getElementById('panelBList').innerHTML = kdca.length
+        ? kdca.map(x => renderAccordionCard(x)).join('')
+        : '<div class="empty-state">수집된 국내 경보가 없습니다.</div>';
+      document.getElementById('panelCList').innerHTML = who.length
+        ? who.map(x => renderAccordionCard(x)).join('')
+        : '<div class="empty-state">수집된 WHO 경보가 없습니다.</div>';
+    }
+
+    function renderChronicle() {
+      const onlyActive = document.getElementById('chkChronOnlyActive').checked;
+      const outbreaks = (state.data.items || []).filter(x => x.content_type === 'outbreak');
+      const byWeek = {};
+      outbreaks.forEach(ob => {
+        if (!byWeek[ob.week_key]) byWeek[ob.week_key] = [];
+        byWeek[ob.week_key].push(ob);
+      });
+
+      const rows = [];
+      for (let w = 52; w >= 1; w--) {
+        const wk = '2026-W' + String(w).padStart(2, '0');
+        const list = byWeek[wk] || [];
+        if (onlyActive && list.length === 0) continue;
+        const summaryHtml = list.length
+          ? list.map(x => regionBadgeHtml(x) + ' ' + esc(x.title_ko)).join('<br/>')
+          : '<span class="chron-empty">특이 감염병 경보 없음</span>';
+        rows.push(
+          '<div class="chron-row" onclick="jumpToWeek(\'' + wk + '\')">' +
+            '<div class="chron-wk">' + wk + '</div>' +
+            '<div class="chron-content">' + summaryHtml + '</div>' +
+          '</div>'
+        );
+      }
+      document.getElementById('chronicleList').innerHTML = rows.length
+        ? rows.join('')
+        : '<div class="empty-state">표시할 연대기 항목이 없습니다.</div>';
+    }
+
+    /* ==================== 탭 3: 가이드라인 ==================== */
+    function renderGuidelines() {
+      const q = (document.getElementById('guideSearch').value || '').trim().toLowerCase();
+      const src = document.getElementById('guideSource').value;
+      const cat = document.getElementById('guideCat').value;
+      const list = (state.data.items || []).filter(x => {
+        if (x.content_type !== 'guideline') return false;
+        if (src && x.source !== src) return false;
+        if (cat && x.topic_category !== cat) return false;
+        if (state.guideBmOnly && !state.bookmarks.has(x.uid)) return false;
+        if (q) {
+          const hay = (x.title_ko + ' ' + x.title_orig + ' ' + x.fact_summary_ko + ' ' + x.ai_clinical_note).toLowerCase();
+          if (hay.indexOf(q) === -1) return false;
+        }
+        return true;
+      });
+      document.getElementById('guideFilterMeta').textContent = '검색 결과 ' + list.length + '건';
+      document.getElementById('guideList').innerHTML = list.length
+        ? list.map(x => renderAccordionCard(x)).join('')
+        : '<div class="empty-state">조건에 맞는 가이드라인이 없습니다.</div>';
+    }
+
+    /* ==================== 탭 4: 논문 ==================== */
+    function renderPapers() {
+      const mo = document.getElementById('paperMonth').value;
+      const src = document.getElementById('paperSource').value;
+      const cat = document.getElementById('paperCat').value;
+      const imp = document.getElementById('paperImp').value;
+      const q = (document.getElementById('paperSearch').value || '').trim().toLowerCase();
+
+      const list = (state.data.items || []).filter(x => {
+        if (x.content_type !== 'paper') return false;
+        if (mo && !String(x.pub_date || '').startsWith(mo)) return false;
+        if (src && x.source !== src) return false;
+        if (cat && x.topic_category !== cat) return false;
+        if (imp && x.importance !== imp) return false;
+        if (state.paperBmOnly && !state.bookmarks.has(x.uid)) return false;
+        if (q) {
+          const hay = (x.title_ko + ' ' + x.title_orig + ' ' + x.fact_summary_ko + ' ' + x.ai_clinical_note + ' ' + x.pmid).toLowerCase();
+          if (hay.indexOf(q) === -1) return false;
+        }
+        return true;
+      });
+
+      const shown = list.slice(0, state.paperLimit);
+      document.getElementById('paperFilterMeta').textContent =
+        '총 ' + list.length + '편 중 ' + shown.length + '편 표시';
+      document.getElementById('paperList').innerHTML = shown.length
+        ? shown.map(x => renderAccordionCard(x)).join('')
+        : '<div class="empty-state">조건에 맞는 논문이 없습니다.</div>';
+
+      const moreBtn = document.getElementById('btnPaperMore');
+      if (list.length > shown.length) {
+        moreBtn.style.display = 'inline-flex';
+        moreBtn.textContent = '논문 더 보기 (' + (list.length - shown.length) + '편 남음)';
+      } else {
+        moreBtn.style.display = 'none';
+      }
+    }
+
+    function fillSelect(elId, labelAll, values) {
+      const el = document.getElementById(elId);
+      const opts = ['<option value="">' + esc(labelAll) + '</option>'];
+      values.forEach(v => opts.push('<option value="' + esc(v) + '">' + esc(v) + '</option>'));
+      el.innerHTML = opts.join('');
+    }
+
+    function initFiltersAndData(data) {
+      state.data = data;
+      const items = data.items || [];
+      loadBookmarks(items);
+
+      const meta = data.meta || {};
+      const models = meta.models || {};
+      document.getElementById('brandSub').textContent =
+        (meta.version || 'v8.0') + ' · GitHub Pages · 최종 갱신: ' + (meta.generated_at || '-') +
+        (models.deep ? (' · 정밀 모델: ' + models.deep) : '');
+
+      const outbreaks = items.filter(x => x.content_type === 'outbreak');
+      const guidelines = items.filter(x => x.content_type === 'guideline');
+      const papers = items.filter(x => x.content_type === 'paper');
+
+      document.getElementById('cntOutbreak').textContent = outbreaks.length;
+      document.getElementById('cntGuideline').textContent = guidelines.length;
+      document.getElementById('cntPaper').textContent = papers.length;
+
+      // 주차 목록
+      const weeks = Array.from(new Set(items.map(x => x.week_key).filter(Boolean))).sort().reverse();
+      const weekSel = document.getElementById('weekSelect');
+      weekSel.innerHTML = weeks.map(w => '<option value="' + esc(w) + '">' + esc(w) + '</option>').join('');
+      state.selectedWeek = weeks[0] || '2026-W47';
+      weekSel.value = state.selectedWeek;
+
+      // 가이드라인 필터
+      fillSelect('guideSource', '출처 전체', Array.from(new Set(guidelines.map(x => x.source))).sort());
+      fillSelect('guideCat', '분야 전체', Array.from(new Set(guidelines.map(x => x.topic_category))).sort());
+
+      // 논문 필터
+      const months = Array.from(new Set(papers.map(x => (x.pub_date || '').slice(0, 7)).filter(Boolean))).sort().reverse();
+      fillSelect('paperMonth', '전체 월', months);
+      fillSelect('paperSource', '저널 전체', Array.from(new Set(papers.map(x => x.source))).sort());
+      fillSelect('paperCat', '분야 전체', Array.from(new Set(papers.map(x => x.topic_category))).sort());
+
+      // 로그 모달
+      document.getElementById('logModelInfo').textContent =
+        '논문·가이드라인 모델: ' + (models.deep || '-') + ' (thinking=' + (models.thinking || '-') + ') / 감염병 경보 모델: ' + (models.lite || '-');
+      document.getElementById('logTableBody').innerHTML = (data.logs || []).map(l => (
+        '<tr>' +
+          '<td style="white-space:nowrap;">' + esc(l.timestamp) + '</td>' +
+          '<td>' + esc(l.source) + '</td>' +
+          '<td><span class="badge ' + (l.status === 'Success' ? 'b-oa' : (l.status === 'Partial' ? 'b-medium' : 'b-high')) + '">' + esc(l.status) + '</span></td>' +
+          '<td style="white-space:nowrap;">' + l.fetched_count + ' / +' + l.new_count + ' / ' + l.duplicate_count + '</td>' +
+          '<td>' + esc(l.error_message) + '</td>' +
+        '</tr>'
+      )).join('');
+
+      renderWeeklyBriefing();
+      renderOutbreakLists();
+      renderChronicle();
+      renderGuidelines();
+      renderPapers();
+    }
+
+    function bindEvents() {
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+      });
+
+      document.getElementById('weekSelect').addEventListener('change', e => {
+        state.selectedWeek = e.target.value;
+        renderWeeklyBriefing();
+      });
+      document.getElementById('btnPrevWeek').addEventListener('click', () => {
+        const sel = document.getElementById('weekSelect');
+        if (sel.selectedIndex < sel.options.length - 1) {
+          sel.selectedIndex += 1;
+          state.selectedWeek = sel.value;
+          renderWeeklyBriefing();
+        }
+      });
+      document.getElementById('btnNextWeek').addEventListener('click', () => {
+        const sel = document.getElementById('weekSelect');
+        if (sel.selectedIndex > 0) {
+          sel.selectedIndex -= 1;
+          state.selectedWeek = sel.value;
+          renderWeeklyBriefing();
+        }
+      });
+
+      document.getElementById('subViewCharts').addEventListener('click', () => {
+        document.getElementById('subViewCharts').classList.add('active');
+        document.getElementById('subViewChron').classList.remove('active');
+        document.getElementById('outbreakChartsView').style.display = 'block';
+        document.getElementById('outbreakChronView').style.display = 'none';
+        renderDualAxisChart();
+      });
+      document.getElementById('subViewChron').addEventListener('click', () => {
+        document.getElementById('subViewChron').classList.add('active');
+        document.getElementById('subViewCharts').classList.remove('active');
+        document.getElementById('outbreakChartsView').style.display = 'none';
+        document.getElementById('outbreakChronView').style.display = 'block';
+      });
+      document.getElementById('chkChronOnlyActive').addEventListener('change', renderChronicle);
+
+      document.getElementById('btnHaiBlood').addEventListener('click', () => {
+        state.haiMetric = 'blood';
+        document.getElementById('btnHaiBlood').classList.add('active');
+        document.getElementById('btnHaiNonBlood').classList.remove('active');
+        renderDualAxisChart();
+      });
+      document.getElementById('btnHaiNonBlood').addEventListener('click', () => {
+        state.haiMetric = 'nonBlood';
+        document.getElementById('btnHaiNonBlood').classList.add('active');
+        document.getElementById('btnHaiBlood').classList.remove('active');
+        renderDualAxisChart();
+      });
+
+      ['guideSearch', 'guideSource', 'guideCat'].forEach(id => {
+        document.getElementById(id).addEventListener('input', renderGuidelines);
+        document.getElementById(id).addEventListener('change', renderGuidelines);
+      });
+      document.getElementById('guideBmOnly').addEventListener('click', e => {
+        state.guideBmOnly = !state.guideBmOnly;
+        e.currentTarget.classList.toggle('btn-active', state.guideBmOnly);
+        renderGuidelines();
+      });
+
+      ['paperMonth', 'paperSource', 'paperCat', 'paperImp', 'paperSearch'].forEach(id => {
+        document.getElementById(id).addEventListener('input', () => { state.paperLimit = 30; renderPapers(); });
+        document.getElementById(id).addEventListener('change', () => { state.paperLimit = 30; renderPapers(); });
+      });
+      document.getElementById('paperBmOnly').addEventListener('click', e => {
+        state.paperBmOnly = !state.paperBmOnly;
+        state.paperLimit = 30;
+        e.currentTarget.classList.toggle('btn-active', state.paperBmOnly);
+        renderPapers();
+      });
+      document.getElementById('btnPaperMore').addEventListener('click', () => {
+        state.paperLimit += 30;
+        renderPapers();
+      });
+
+      const modal = document.getElementById('logModal');
+      document.getElementById('btnLogs').addEventListener('click', () => modal.classList.add('show'));
+      document.getElementById('btnCloseLogs').addEventListener('click', () => modal.classList.remove('show'));
+      modal.addEventListener('click', e => { if (e.target === modal) modal.classList.remove('show'); });
+    }
+
+    async function boot() {
+      bindEvents();
+      try {
+        const res = await fetch('./data/dashboard.json?v=' + Date.now());
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        initFiltersAndData(data);
+      } catch (err) {
+        document.getElementById('brandSub').textContent = '데이터 로딩 오류: ' + err.message;
+        document.getElementById('panelAGrid').innerHTML =
+          '<div class="empty-state">data/dashboard.json 파일을 불러오지 못했습니다. GitHub Pages 설정을 확인해 주세요.</div>';
+      }
+    }
+
+    boot();
+  </script>
+</body>
+</html>
