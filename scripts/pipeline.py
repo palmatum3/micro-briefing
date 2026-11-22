@@ -1,12 +1,18 @@
 #!/usr/bin/env python3
 """
-임상미생물 주간 브리핑 자동 수집 · 4단계 100점 정량 채점 · 503 자동 우회 엔진 (v8.1)
-- Google Sheets(원본 DB) + GitHub Actions(무제한 수집·요약) + GitHub Pages(초고속 4탭 대시보드)
-- v8.1 핵심 개선:
-  1) 503 과부하·타임아웃 자동 우회(Fallback): 논문·가이드라인 2건 배치 + low 추론 + primary 실패 시 fallback(gemini-3.6-flash) 자동 전환
-  2) 4단계 등급 + 100점 정량 채점: AI는 4개 축 점수(각 0~25점)만 채점, 코드가 config 컷오프로 Must-Read/High/Medium/Low 기계 판정
-  3) 2026년 1월 전체 확대: 4대 저널(retmax=1000)·가이드라인·WHO·KDCA 긴급경보 + KDCA 표본감시 주간소식지 다중 페이지(1주차~) 소급 수집
-  4) reclassify_only 모드: config 시트 컷오프 숫자 변경 시 AI 비용 0원으로 전체 등급 즉시 재계산
+임상미생물 주간 브리핑 자동 수집 · 2-Pass 차등 정밀 요약 · 100점 고정 앵커 루브릭 엔진 (v8.2)
+- Google Sheets(원본 DB) + GitHub Actions(무제한 수집·요약) + GitHub Pages(0.3초 고속 5탭 메인 대시보드)
+- v8.2 핵심 업그레이드:
+  1) 100점 완전 고정 앵커 루브릭 (35 / 30 / 20 / 15 가중치):
+     실무(35/26/16/6) · 근거(30/22/13/5) · 국내적용(20/14/8/3) · 신규성(15/11/6/2), CID 대규모 치료·백신 RCT 포괄 허용(옵션 B)
+  2) 초록 기반 논문 유형별 상한선(Cap): 단일기관 소규모·후향 82 / 서술형 리뷰 78 / 증례·Letter·Editorial 69 / 순수 기초연구 65 (원점수·Cap 투명 보존)
+  3) Critical Exception (E1~E4): 필수 3조건 모두 충족 시 원점수·Cap 변경 없이 별도 예외 필독 판정 및 2-Pass 심층 요약 강제 수행
+  4) 2-Pass 차등 요약 (안 B):
+     - Pass 1(전수): gemini-4-hydrogen (thinking: low)
+     - Pass 2(Must-Read 85+ 또는 Critical Exception 확정 전용): gemini-4-hydrogen (thinking: high)
+     - 503/지연 자동 폴백: gemini-3.6-flash / 감염병 경보 경량 요약: gemini-3.5-flash-lite
+  5) 상반기(2026-01~06) 소급 가드 기본 활성(--allow-h1 미지정 시 2026-07-01 이후 논문 집중)
+  6) 본 DB 보호용 pilot_20 층화 파일럿 모드: 별도 시트 탭(pilot_v82)에만 20편 검증 출력
 """
 
 import argparse
@@ -25,7 +31,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 import requests
 
-CODE_VERSION = "v8.1"
+CODE_VERSION = "v8.2"
 KST = datetime.timezone(datetime.timedelta(hours=9))
 
 SHEET_ITEMS = "items"
@@ -33,12 +39,35 @@ SHEET_LOGS = "run_logs"
 SHEET_CONFIG = "config"
 SHEET_KDCA_SURV = "kdca_surveillance"
 SHEET_HAI_STATS = "hai_stats"
+SHEET_PILOT = "pilot_v82"
 
 GEMINI_DEEP_BATCH_SIZE = 2
 GEMINI_LITE_BATCH_SIZE = 5
 KDCA_EID_BASE_URL = "https://apis.data.go.kr/1790387/EIDAPIService01"
-DEFAULT_PAPER_START_DATE = "2026-01-01"
+H2_GUARD_START_DATE = "2026-07-01"
 DEFAULT_YEAR_START_DATE = "2026-01-01"
+
+# 100-Point Fixed Anchors (35 / 30 / 20 / 15 — Option 1 strict anchor selection)
+ANCHORS_PRACTICE = (35, 26, 16, 6)
+ANCHORS_EVIDENCE = (30, 22, 13, 5)
+ANCHORS_KOREA = (20, 14, 8, 3)
+ANCHORS_NOVELTY = (15, 11, 6, 2)
+
+# Study-Type Caps (Abstract-based)
+STUDY_TYPE_CAPS: Dict[str, Tuple[Optional[int], str]] = {
+    "uncapped": (None, "상한 없음(대규모·지침·RCT·메타분석)"),
+    "single_center_small_or_retro": (82, "단일기관 소규모·후향"),
+    "narrative_review": (78, "서술형 종설·일반 리뷰"),
+    "case_letter_editorial": (69, "증례·Letter·Comment·Editorial"),
+    "basic_preclinical": (65, "순수 기초·전임상 연구"),
+}
+
+EXCEPTION_LABELS: Dict[str, str] = {
+    "E1": "E1(공식 기준·지침 변경)",
+    "E2": "E2(중대한 검사 오류·한계)",
+    "E3": "E3(신규 고위험 병원체·내성기전)",
+    "E4": "E4(긴급 감염병 대응)",
+}
 
 PUBMED_CLEAN_FILTER = (
     ' AND hasabstract[text] NOT "Photo Quiz"[Title] NOT "Editorial"[Publication Type]'
@@ -87,7 +116,7 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 OUTPUT_JSON_PATH = ROOT_DIR / "docs" / "data" / "dashboard.json"
 
 HTTP = requests.Session()
-HTTP.headers.update({"User-Agent": "ClinicalMicroBriefing/8.1 (Academic Surveillance Bot)"})
+HTTP.headers.update({"User-Agent": "ClinicalMicroBriefing/8.2 (Academic Surveillance Bot)"})
 
 
 def now_kst() -> datetime.datetime:
@@ -229,9 +258,9 @@ def safe_int(val: Any, default: int = 0) -> int:
     return int(round(f)) if f is not None else default
 
 
-def clamp_score(val: Any, hi: int = 25) -> int:
-    n = safe_int(val, 0)
-    return max(0, min(hi, n))
+def snap_anchor(val: Any, allowed: Tuple[int, ...]) -> int:
+    n = safe_int(val, allowed[-1])
+    return min(allowed, key=lambda a: (abs(a - n), -a))
 
 
 def get_score_cutoffs(cfg: Dict[str, str]) -> Dict[str, int]:
@@ -250,6 +279,108 @@ def score_to_tier(total_score: int, cutoffs: Dict[str, int]) -> str:
     if total_score >= cutoffs["medium"]:
         return "Medium"
     return "Low"
+
+
+def evaluate_paper_score_and_exception(
+    ai: Dict[str, Any],
+    content_type: str,
+    has_abstract: bool,
+    cutoffs: Dict[str, int],
+) -> Dict[str, Any]:
+    """
+    완전 고정 앵커(35/30/20/15) + 유형별 Cap + Critical Exception(E1~E4, 필수 3조건) 기계적 판정.
+    원점수·Cap은 예외가 발생하더라도 임의로 변경하지 않고 투명하게 보존함.
+    """
+    s1 = snap_anchor(ai.get("score_practice"), ANCHORS_PRACTICE)
+    s2 = snap_anchor(ai.get("score_evidence"), ANCHORS_EVIDENCE)
+    s3 = snap_anchor(ai.get("score_korea"), ANCHORS_KOREA)
+    s4 = snap_anchor(ai.get("score_innovation"), ANCHORS_NOVELTY)
+    raw_score = s1 + s2 + s3 + s4
+
+    study_type = safe_str(ai.get("study_type")) or "uncapped"
+    if study_type not in STUDY_TYPE_CAPS:
+        study_type = "uncapped"
+
+    cap_val, cap_label = STUDY_TYPE_CAPS[study_type]
+    # 공식 학회 가이드라인은 유형 Cap 예외(uncapped), 초록 없는 일반 논문은 65점 상한
+    if content_type == "guideline":
+        cap_val = None
+        study_type = "uncapped"
+        cap_label = STUDY_TYPE_CAPS["uncapped"][1]
+    elif not has_abstract:
+        if cap_val is None or cap_val > 65:
+            cap_val = 65
+            cap_label = "초록 원문 부재(확인 필요)"
+
+    final_score = min(raw_score, cap_val) if cap_val is not None else raw_score
+    cap_applied = cap_val is not None and raw_score > cap_val
+    tier = score_to_tier(final_score, cutoffs)
+
+    breakdown = f"실무:{s1}/35 | 근거:{s2}/30 | 국내:{s3}/20 | 신규:{s4}/15"
+    if cap_applied:
+        breakdown += f" | Cap:{raw_score}→{final_score}({cap_label})"
+    elif cap_val is not None:
+        breakdown += f" | 유형:{cap_label}(Cap {cap_val})"
+
+    # Critical Exception (필수 3조건 모두 True + E1~E4 + 근거 사유 존재)
+    exc_type = safe_str(ai.get("exception_type")).upper()
+    cond1 = bool(ai.get("cond_lab_direct"))
+    cond2 = bool(ai.get("cond_high_impact"))
+    cond3 = bool(ai.get("cond_reliable_evidence"))
+    exc_reason = safe_str(ai.get("exception_reason"))
+
+    is_ce = exc_type in EXCEPTION_LABELS and cond1 and cond2 and cond3 and len(exc_reason) >= 5
+    critical_exception = exc_type if is_ce else ""
+    if not is_ce:
+        exc_reason = ""
+
+    ai["study_type"] = study_type
+    ai["cap_value"] = cap_val
+    ai["cap_label"] = cap_label if cap_applied else ""
+    ai["raw_score"] = raw_score
+    ai["importance_score"] = final_score
+    ai["importance"] = tier
+    ai["score_breakdown"] = breakdown
+    ai["critical_exception"] = critical_exception
+    ai["exception_reason"] = exc_reason
+    ai["needs_pass2"] = (tier == "Must-Read") or bool(critical_exception)
+    return ai
+
+
+def evaluate_outbreak_score_and_exception(
+    ai: Dict[str, Any],
+    cutoffs: Dict[str, int],
+) -> Dict[str, Any]:
+    s1 = snap_anchor(ai.get("score_domestic"), ANCHORS_PRACTICE)
+    s2 = snap_anchor(ai.get("score_severity"), ANCHORS_EVIDENCE)
+    s3 = snap_anchor(ai.get("score_action"), ANCHORS_KOREA)
+    s4 = snap_anchor(ai.get("score_novelty"), ANCHORS_NOVELTY)
+    total = s1 + s2 + s3 + s4
+    tier = score_to_tier(total, cutoffs)
+
+    exc_type = safe_str(ai.get("exception_type")).upper()
+    cond1 = bool(ai.get("cond_lab_direct"))
+    cond2 = bool(ai.get("cond_high_impact"))
+    cond3 = bool(ai.get("cond_reliable_evidence"))
+    exc_reason = safe_str(ai.get("exception_reason"))
+    is_ce = exc_type == "E4" and cond1 and cond2 and cond3 and len(exc_reason) >= 5
+
+    ai["importance_score"] = total
+    ai["importance"] = tier
+    ai["score_breakdown"] = f"국내영향:{s1}/35 | 위험도:{s2}/30 | 대응시급:{s3}/20 | 신규성:{s4}/15"
+    ai["critical_exception"] = "E4" if is_ce else ""
+    ai["exception_reason"] = exc_reason if is_ce else ""
+    return ai
+
+
+def resolve_effective_paper_start(cfg: Dict[str, str], allow_h1: bool) -> Tuple[str, bool]:
+    """상반기 소급 가드: allow_h1=False(기본값)이면 논문 처리 범위를 2026-07-01 이후로 강제 보호"""
+    cfg_start = cfg.get("collect_start_date", "").strip() or H2_GUARD_START_DATE
+    cfg_allow_h1 = cfg.get("allow_h1_backfill", "").strip().upper() == "TRUE"
+    h1_unlocked = allow_h1 or cfg_allow_h1
+    if not h1_unlocked and cfg_start < H2_GUARD_START_DATE:
+        return H2_GUARD_START_DATE, True
+    return cfg_start, False
 
 
 # =====================================================================
@@ -293,15 +424,17 @@ def get_or_create_worksheet(ss, title: str, headers: List[str]):
 
 
 def ensure_item_meta_columns(ws):
-    """items 시트 18~21열(summary_meta, importance_reason, importance_score, score_breakdown) 자동 확보"""
+    """items 시트 18~23열(R~W: summary_meta ~ exception_reason) 자동 확보"""
     header = ws.row_values(1)
-    if ws.col_count < 21:
-        ws.resize(cols=21)
+    if ws.col_count < 23:
+        ws.resize(cols=23)
     col_defs = [
         (18, "R1", "summary_meta"),
         (19, "S1", "importance_reason"),
         (20, "T1", "importance_score"),
         (21, "U1", "score_breakdown"),
+        (22, "V1", "critical_exception"),
+        (23, "W1", "exception_reason"),
     ]
     updates = []
     for col_idx, cell, name in col_defs:
@@ -325,12 +458,13 @@ def is_enabled(cfg: Dict[str, str], key: str) -> bool:
     return cfg.get(key, "").upper() == "TRUE"
 
 
-def get_gemini_models(cfg: Dict[str, str]) -> Tuple[str, str, str, str]:
+def get_gemini_models(cfg: Dict[str, str]) -> Tuple[str, str, str, str, str]:
     lite = cfg.get("gemini_model", "").strip() or "gemini-3.5-flash-lite"
     deep = cfg.get("gemini_model_deep", "").strip() or "gemini-4-hydrogen"
     fallback = cfg.get("gemini_model_fallback", "").strip() or "gemini-3.6-flash"
-    thinking = cfg.get("gemini_thinking_level_deep", "").strip().lower() or "low"
-    return lite, deep, fallback, thinking
+    thinking_p1 = cfg.get("gemini_thinking_level_deep", "").strip().lower() or "low"
+    thinking_p2 = cfg.get("gemini_thinking_level_pass2", "").strip().lower() or "high"
+    return lite, deep, fallback, thinking_p1, thinking_p2
 
 
 def append_run_log(ss, run_id: str, ts: str, source: str, status: str, fetched: int, added: int, dup: int, note: str):
@@ -343,7 +477,7 @@ def append_run_log(ss, run_id: str, ts: str, source: str, status: str, fetched: 
 
 
 # =====================================================================
-# Gemini API (503 Auto-Fallback + 4-Tier 100-Point Quantitative Rubric)
+# Gemini API (2-Pass Differential Summary + 503 Auto-Fallback)
 # =====================================================================
 def probe_gemini_model(model_name: str, api_key: str) -> str:
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{urllib.parse.quote(model_name)}:generateContent"
@@ -360,15 +494,16 @@ def probe_gemini_model(model_name: str, api_key: str) -> str:
         return f"연결 오류 ({str(e)[:120]})"
 
 
-def _call_single_gemini_model(
+def _call_single_gemini_json(
     prompt: str,
     response_schema: Dict[str, Any],
     model_name: str,
     api_key: str,
     temperature: float,
     thinking_level: str,
+    timeout_read: int = 105,
     max_attempts: int = 3,
-) -> Dict[str, Dict[str, Any]]:
+) -> Dict[str, Any]:
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{urllib.parse.quote(model_name)}:generateContent"
     gen_cfg: Dict[str, Any] = {
         "temperature": temperature,
@@ -383,7 +518,7 @@ def _call_single_gemini_model(
     last_err = ""
     for attempt in range(1, max_attempts + 1):
         try:
-            res = HTTP.post(url, headers={"x-goog-api-key": api_key}, json=payload, timeout=(15, 95))
+            res = HTTP.post(url, headers={"x-goog-api-key": api_key}, json=payload, timeout=(15, timeout_read))
             if res.status_code == 200:
                 body = res.json()
                 parts = body.get("candidates", [{}])[0].get("content", {}).get("parts", [])
@@ -398,16 +533,11 @@ def _call_single_gemini_model(
                     raise RuntimeError("Gemini 응답 텍스트 없음")
                 cleaned = re.sub(r"^```(?:json)?\s*", "", text.strip(), flags=re.IGNORECASE)
                 cleaned = re.sub(r"\s*```$", "", cleaned)
-                parsed = json.loads(cleaned)
-                out: Dict[str, Dict[str, Any]] = {}
-                for item in parsed.get("items", []):
-                    if isinstance(item, dict) and item.get("uid"):
-                        out[str(item["uid"])] = item
-                return out
+                return json.loads(cleaned)
 
-            last_err = f"HTTP {res.status_code}: {res.text[:200]}"
+            last_err = f"HTTP {res.status_code}: {res.text[:220]}"
             if res.status_code in (429, 500, 502, 503, 504) and attempt < max_attempts:
-                wait_sec = 5 * attempt
+                wait_sec = 6 * attempt
                 print(f"  [재시도 {attempt}/{max_attempts}] {model_name} HTTP {res.status_code}, {wait_sec}초 대기...")
                 time.sleep(wait_sec)
                 continue
@@ -431,45 +561,65 @@ def call_gemini_with_fallback(
     api_key: str,
     temperature: float = 0.1,
     thinking_level: str = "low",
-) -> Tuple[Dict[str, Dict[str, Any]], str]:
+    timeout_read: int = 105,
+) -> Tuple[Dict[str, Any], str]:
     try:
-        res_map = _call_single_gemini_model(
-            prompt, response_schema, primary_model, api_key, temperature, thinking_level, max_attempts=3
+        parsed = _call_single_gemini_json(
+            prompt, response_schema, primary_model, api_key, temperature, thinking_level, timeout_read, max_attempts=3
         )
-        return res_map, primary_model
+        return parsed, primary_model
     except Exception as primary_err:
         if fallback_model and fallback_model != primary_model:
             print(f"  [503/지연 자동 우회] {primary_model} 실패({str(primary_err)[:80]}) -> {fallback_model} 전환 실행")
-            fb_thinking = "low" if re.match(r"^gemini-[34]", fallback_model, re.IGNORECASE) else ""
-            res_map = _call_single_gemini_model(
-                prompt, response_schema, fallback_model, api_key, temperature, fb_thinking, max_attempts=3
+            fb_thinking = thinking_level if re.match(r"^gemini-[34]", fallback_model, re.IGNORECASE) else ""
+            if fb_thinking == "high":
+                fb_thinking = "medium"
+            parsed = _call_single_gemini_json(
+                prompt, response_schema, fallback_model, api_key, temperature, fb_thinking, timeout_read, max_attempts=3
             )
-            return res_map, fallback_model
+            return parsed, fallback_model
         raise
 
 
-def format_clinical_note(raw_note: str, tier: str, primary_axis: str, total_score: int, is_deep: bool) -> str:
+def format_clinical_note(
+    raw_note: str,
+    tier: str,
+    total_score: int,
+    critical_exception: str,
+    pass2_applied: bool,
+) -> str:
     clean = str(raw_note or "").strip()
-    clean = re.sub(r"^(\[?\s*AI\s*(임상\s*)?(참고\s*)?해석\s*\]?\s*[:：\-]?\s*)", "", clean, flags=re.IGNORECASE)
+    clean = re.sub(r"^(\[?\s*AI\s*(임상\s*)?(참고\s*)?해석[^\]]*\]?\s*[:：\-]?\s*)", "", clean, flags=re.IGNORECASE)
     clean = re.sub(r"^AI의\s*(임상\s*)?(참고\s*)?해석에\s*따르면[,]?\s*", "", clean, flags=re.IGNORECASE)
     clean = re.sub(r"^본\s*원저는\s*", "", clean, flags=re.IGNORECASE)
-    if is_deep and tier == "Must-Read" and primary_axis and primary_axis != "해당없음":
-        return f"[AI 해석 · 필독 {total_score}점({primary_axis})] {clean}"
-    return f"[AI 해석] {clean}"
+    prefix_parts = ["AI 해석"]
+    if critical_exception:
+        prefix_parts.append(f"예외필독 {critical_exception}")
+    elif tier == "Must-Read":
+        prefix_parts.append(f"필독 {total_score}점")
+    if pass2_applied:
+        prefix_parts.append("2-Pass 심층")
+    return f"[{' · '.join(prefix_parts)}] {clean}"
 
 
-def summarize_deep_batch(
+def summarize_deep_pass1_batch(
     chunk: List[Dict[str, Any]],
     primary_model: str,
     fallback_model: str,
     api_key: str,
-    thinking_level: str,
+    thinking_level_p1: str,
     cutoffs: Dict[str, int],
 ) -> Tuple[Dict[str, Dict[str, Any]], str]:
+    """Pass 1: 전수 채점(35/30/20/15 완전 고정 앵커) + 유형별 Cap 분류 + Critical Exception 판정 + 간략 요약"""
     blocks = []
+    has_abs_map: Dict[str, bool] = {}
+    ctype_map: Dict[str, str] = {}
     for idx, it in enumerate(chunk, 1):
         raw = str(it.get("rawText") or "").strip()
-        abs_display = raw[:3500] if len(raw) >= 40 else "(초록 원문 없음 — 제목만 제공됨)"
+        has_abs = len(raw) >= 40
+        has_abs_map[it["uid"]] = has_abs
+        ctype_map[it["uid"]] = it["contentType"]
+        abs_display = raw[:3500] if has_abs else "(초록 원문 없음 — 제목만 제공됨)"
         blocks.append(
             "\n".join(
                 [
@@ -485,35 +635,49 @@ def summarize_deep_batch(
     prompt = "\n".join(
         [
             "당신은 대한민국 대학병원 진단검사의학과(임상미생물학·분자진단·항균제 내성) 전문의를 지원하는 수석 학술 평가 AI입니다.",
-            f'아래 {len(chunk)}편의 논문 또는 가이드라인을 분석하여 JSON 객체({{ "items": [...] }})로만 응답하십시오. 각 항목의 uid를 정확히 유지하십시오.',
+            f'아래 {len(chunk)}편의 논문 또는 가이드라인에 대해 [Pass 1: 전수 정량 채점 + 예외 판정 + 간략 요약]을 수행하고 JSON({{ "items": [...] }})으로만 응답하십시오.',
             "",
             "[절대 준수 원칙]",
-            '1. 원문 왜곡 및 환각 금지: 초록 원문에 명시되지 않은 표본 수(n), 민감도/특이도, 균주, 결론을 절대 추측하거나 지어내지 마십시오. 초록이 없거나 극히 짧으면 fact_summary_ko 첫 문장에 "초록 정보 부족으로 원문 확인 필요."를 명시하십시오.',
-            "2. fact_summary_ko (원문 사실 요약, 3~4문장):",
-            "   - 연구 목적·설계(다기관/단일기관, 전향/후향, 검체·균주 수 n), 초록에 명시된 핵심 수치(민감도·특이도·일치도·TAT·OR·p값), 핵심 결론을 객관적으로 압축하십시오.",
-            "3. ai_clinical_note (진단검사의학과 전문의 실무 포인트, 2~3문장):",
-            '   - 금지 상용구: "참고가 될 것으로 사료됩니다", "중요성을 시사합니다", "유용한 도구가 될 수 있습니다", "기초 자료로 활용될 수 있습니다".',
-            "   - 반드시 (a) 대학병원 임상미생물 검사실(검사 세팅·분자진단·MALDI-TOF·AST 판독/보고·정도관리·감염관리) 실무 적용점 1가지와 (b) 연구 한계·검증 주의사항 1가지를 구체적으로 적으십시오.",
-            "4. [엄격한 100점 정량 채점 기준 — 각 항목 0~25점 정수, 점수 인플레이션 엄금]:",
-            "   최종 등급(필독/주목/참고/단신)은 프로그램이 총점으로 자동 판정합니다. 전체 논문의 상위 5~10%만 85점 이상이 되도록 냉정하게 채점하십시오.",
-            "   - score_practice (실무·프로토콜 변경력, 0~25):",
-            "     · 22~25: IDSA/ESCMID 공식 가이드라인 제·개정, CLSI/EUCAST breakpoint 변경 근거, AST 중대 오류(VME/ME) 주의보",
-            "     · 15~21: 검사실 워크플로우·TAT·보고체계에 실질적 개선을 주는 검증",
-            "     · 8~14: 간접적 참고 가치 / 0~7: 프로토콜 변화 없음, 단순 리뷰·사설",
-            "   - score_evidence (연구 설계·근거 강도, 0~25):",
-            "     · 22~25: 공식 학회 지침, 대규모 다기관 전향(n>=300), 대규모 RCT, 체계적 메타분석",
-            "     · 14~21: 중규모 원저(n=150~299) 또는 탄탄한 다기관 후향 연구",
-            "     · 7~13: 단일기관 소규모(n<150) 예비평가, 후향 관찰 / 0~6: 증례보고(Case Report), 기초/동물실험",
-            "   - score_korea (국내 대학병원 임상미생물 적용성, 0~25):",
-            "     · 22~25: CRE·카바페네마제, C. auris, 혈액배양 신속동정/AST, 결핵/NTM, 호흡기·CSF 분자진단, MALDI-TOF, 주요 항균제 내성 직결",
-            "     · 13~21: 일반 임상 감염·진단 참고 가능",
-            "     · 0~12: 국내 발생 극히 드문 해외 풍토병(샤가스·리슈마니아·열대기생충 등), 저소득국 한정 정책·역학, 수의·비인체 균주",
-            "   - score_innovation (혁신성·임상 파급력, 0~25):",
-            "     · 22~25: 게임체인저급 진단 혁신, 신종 다제내성 기전 최초 규명, 놓치면 치명적인 진단 함정",
-            "     · 13~21: 의미 있는 기술 개선 또는 대규모 역학 근거",
-            "     · 0~12: 기존 장비 소폭 비교, 반복적 지역 감시 보고",
-            "   ※ 초록 원문이 없는 일반 논문(공식 학회 가이드라인 제외)은 4개 항목 모두 최대 14점 이하(총점 56점 이하)로 제한하십시오.",
-            "5. topic_category (목록 중 정확히 하나 선택):",
+            '1. 환각·과장 금지: 초록 원문에 없는 표본 수(n), 민감도/특이도, 균주, 결론을 절대 지어내지 마십시오. 초록 원문이 없으면 fact_summary_ko 첫 문장에 "초록 정보 부족으로 원문 확인 필요."를 명시하십시오.',
+            "2. [100점 완전 고정 앵커 채점 — 각 축에서 제시된 4개 숫자 문자열 중 정확히 1개만 선택, 미세조정 금지]:",
+            "   ※ 옵션 B 적용: CID 등 주요 내성균(CRE·MRSA 등) 및 중증 감염병의 표준 치료·예방을 바꾸는 대규모 RCT는 포괄적으로 높게 평가하여 Must-Read 진입을 허용합니다.",
+            '   - score_practice (실무·검사실 변경력 35점, 선택지: "35" | "26" | "16" | "6"):',
+            "     · 35: 공식 가이드라인 제·개정, CLSI/EUCAST breakpoint 변경 근거, AST 중대 오류(VME/ME) 주의보, 주요 내성균·중증감염 표준 치료를 바꾸는 대규모 RCT",
+            "     · 26: 검사실 워크플로우·TAT·분자진단·MALDI-TOF·감염관리 프로토콜에 실질적 개선을 제시",
+            "     · 16: 간접적 임상·검사실 참고 가치 / 6: 실무 변화 없음, 단순 리뷰·정책·기초",
+            '   - score_evidence (근거 강도·연구 설계 30점, 선택지: "30" | "22" | "13" | "5"):',
+            "     · 30: 공식 학회 가이드라인, 대규모 다기관 전향 연구(n>=300), 대규모 RCT, 체계적 문헌고찰·메타분석",
+            "     · 22: 중규모 원저(n=150~299) 또는 탄탄한 다기관 후향 코호트",
+            "     · 13: 단일기관 소규모(n<150) 평가, 후향적 기술연구, 서술형 리뷰 / 5: 증례보고, Letter/Editorial, 순수 기초·동물실험",
+            '   - score_korea (국내 대학병원 적용성 20점, 선택지: "20" | "14" | "8" | "3"):',
+            "     · 20: CRE·카바페네마제, MRSA/VRE, C. auris, 혈액배양 신속진단/AST, 결핵/NTM, 호흡기·CSF 분자진단, MALDI-TOF 등 국내 대학병원 직결",
+            "     · 14: 국내 임상 감염·검사실에서 일반 참고 가능",
+            "     · 8: 국내 발생이 드물거나 해외 특정 지역 중심 / 3: 국내 극히 희귀한 열대풍토병·저소득국 한정 정책·수의/비인체",
+            '   - score_innovation (학술적 신규성·파급력 15점, 선택지: "15" | "11" | "6" | "2"):',
+            "     · 15: 게임체인저급 진단 혁신, 신종 내성 기전 최초 규명, 놓치면 치명적인 진단·치료 함정",
+            "     · 11: 의미 있는 기술·임상 근거 확장 / 6: 기존 장비·방법의 점진적 비교 / 2: 반복적 지역 감시·단순 보고",
+            "3. [논문 유형 분류 (study_type) — 초록 기준 정확히 1개 선택, 코드가 유형별 Cap 자동 적용]:",
+            '   - "uncapped": 공식 학회 지침(IDSA/ESCMID 등), 다기관 평가, 대규모 RCT, 체계적 문헌고찰·메타분석, 국가·국제 규모 감시/표준화 연구',
+            '   - "single_center_small_or_retro": 단일기관 소규모 평가 또는 단일기관 후향적 기술연구 (Cap 82)',
+            '   - "narrative_review": 서술형 종설·일반 리뷰·미니리뷰·입장문(비체계적) (Cap 78)',
+            '   - "case_letter_editorial": 증례보고(Case Report)·Letter·Comment·Editorial (Cap 69)',
+            '   - "basic_preclinical": 순수 기초연구·in vitro·동물실험 (Cap 65)',
+            "4. [Critical Exception (중요 논문 예외 선정 — 엄격 판정, 전체의 극소수만 해당)]:",
+            "   점수·Cap과 별도로 아래 4유형 중 하나에 해당하면서 [필수 3조건]을 모두 충족할 때만 예외로 지정하십시오.",
+            '   - exception_type: "NONE" | "E1" | "E2" | "E3" | "E4"',
+            "     · E1: 공식 기준·지침 변경 (CLSI/EUCAST breakpoint 개정, 주요 검사 지침·보고 기준 변경)",
+            "     · E2: 중대한 검사 오류·한계 (기존 상용 검사법의 중대한 위음성·위양성 위험, 특정 변이·내성 기전 검출 실패)",
+            "     · E3: 새로운 고위험 병원체·내성 기전 (검사실 검출·동정·감수성검사 전략에 영향을 주는 신규 발견)",
+            "     · E4: 긴급 감염병 대응 (WHO·CDC·KDCA 등의 긴급 경보 및 검사 전략 변경 권고)",
+            "   - 필수 3조건 (각각 true/false 엄격 판정):",
+            "     · cond_lab_direct: 검사실 업무와 직접적인 관련성이 있는가?",
+            "     · cond_high_impact: 검사 결과 해석·환자 진료·검사실 대응에 중대한 영향을 미치는가?",
+            "     · cond_reliable_evidence: 공식 기관 권고 또는 신뢰할 만한 연구 근거가 있는가?",
+            "   ※ 단순 증례보고, 일반 소규모 예비평가, 임상 적용 가능성이 불분명한 초기 연구는 반드시 NONE으로 판정하십시오.",
+            "5. Pass 1 간략 요약 규칙:",
+            "   - fact_summary_ko: 원문 핵심 사실(대상·설계·주요 수치·결론)을 객관적으로 2~3문장 압축.",
+            '   - ai_clinical_note: 금지 상용구("참고가 될 것으로 사료됩니다", "중요성을 시사합니다" 등) 없이 대학병원 검사실 관점의 실무 포인트와 한계 각 1문장.',
+            "6. topic_category:",
             '   - guideline: "IDSA 지침" | "ESCMID·국제 지침" | "국내 지침"',
             '   - paper: "항균제 내성·AST" | "분자진단·신기술" | "임상 감염·치료" | "감염관리·역학" | "기타"',
             "",
@@ -544,20 +708,25 @@ def summarize_deep_batch(
                                 "기타",
                             ],
                         },
-                        "primary_axis": {
+                        "study_type": {
                             "type": "STRING",
                             "enum": [
-                                "진단·검사법 혁신",
-                                "항균제 내성·AST",
-                                "가이드라인·검사실 QC",
-                                "원내감염·유행 관리",
-                                "해당없음",
+                                "uncapped",
+                                "single_center_small_or_retro",
+                                "narrative_review",
+                                "case_letter_editorial",
+                                "basic_preclinical",
                             ],
                         },
-                        "score_practice": {"type": "INTEGER"},
-                        "score_evidence": {"type": "INTEGER"},
-                        "score_korea": {"type": "INTEGER"},
-                        "score_innovation": {"type": "INTEGER"},
+                        "score_practice": {"type": "STRING", "enum": ["35", "26", "16", "6"]},
+                        "score_evidence": {"type": "STRING", "enum": ["30", "22", "13", "5"]},
+                        "score_korea": {"type": "STRING", "enum": ["20", "14", "8", "3"]},
+                        "score_innovation": {"type": "STRING", "enum": ["15", "11", "6", "2"]},
+                        "exception_type": {"type": "STRING", "enum": ["NONE", "E1", "E2", "E3", "E4"]},
+                        "cond_lab_direct": {"type": "BOOLEAN"},
+                        "cond_high_impact": {"type": "BOOLEAN"},
+                        "cond_reliable_evidence": {"type": "BOOLEAN"},
+                        "exception_reason": {"type": "STRING"},
                         "importance_reason": {"type": "STRING"},
                         "fact_summary_ko": {"type": "STRING"},
                         "ai_clinical_note": {"type": "STRING"},
@@ -566,11 +735,16 @@ def summarize_deep_batch(
                         "uid",
                         "title_ko",
                         "topic_category",
-                        "primary_axis",
+                        "study_type",
                         "score_practice",
                         "score_evidence",
                         "score_korea",
                         "score_innovation",
+                        "exception_type",
+                        "cond_lab_direct",
+                        "cond_high_impact",
+                        "cond_reliable_evidence",
+                        "exception_reason",
                         "importance_reason",
                         "fact_summary_ko",
                         "ai_clinical_note",
@@ -581,23 +755,74 @@ def summarize_deep_batch(
         "required": ["items"],
     }
 
-    raw_map, used_model = call_gemini_with_fallback(
-        prompt, schema, primary_model, fallback_model, api_key, 0.1, thinking_level
+    parsed, used_model = call_gemini_with_fallback(
+        prompt, schema, primary_model, fallback_model, api_key, 0.1, thinking_level_p1, timeout_read=105
     )
 
-    # Mechanical score summation & tier classification
-    enriched: Dict[str, Dict[str, Any]] = {}
-    for uid, ai in raw_map.items():
-        s1 = clamp_score(ai.get("score_practice"), 25)
-        s2 = clamp_score(ai.get("score_evidence"), 25)
-        s3 = clamp_score(ai.get("score_korea"), 25)
-        s4 = clamp_score(ai.get("score_innovation"), 25)
-        total = s1 + s2 + s3 + s4
-        ai["importance_score"] = total
-        ai["importance"] = score_to_tier(total, cutoffs)
-        ai["score_breakdown"] = f"실무:{s1} | 근거:{s2} | 국내:{s3} | 혁신:{s4}"
-        enriched[uid] = ai
-    return enriched, used_model
+    out: Dict[str, Dict[str, Any]] = {}
+    for item in parsed.get("items", []):
+        if isinstance(item, dict) and item.get("uid"):
+            uid = str(item["uid"])
+            out[uid] = evaluate_paper_score_and_exception(
+                item, ctype_map.get(uid, "paper"), has_abs_map.get(uid, False), cutoffs
+            )
+    return out, used_model
+
+
+def run_pass2_deep_summary(
+    item: Dict[str, Any],
+    p1_ai: Dict[str, Any],
+    primary_model: str,
+    fallback_model: str,
+    api_key: str,
+    thinking_level_p2: str = "high",
+) -> Tuple[Dict[str, Any], str]:
+    """Pass 2: Must-Read(85+) 또는 Critical Exception(E1~E4) 확정 논문 전용 심층 요약 (thinking: high)"""
+    raw = str(item.get("rawText") or "").strip()
+    abs_display = raw[:4500] if len(raw) >= 40 else "(초록 원문 없음 — 제목만 제공됨)"
+    ce = p1_ai.get("critical_exception", "")
+    ce_desc = f"{EXCEPTION_LABELS.get(ce, ce)} — {p1_ai.get('exception_reason', '')}" if ce else "해당없음"
+
+    prompt = "\n".join(
+        [
+            "당신은 대한민국 대학병원 진단검사의학과(임상미생물학·분자진단·항균제 내성) 전문의를 위한 수석 학술 분석 AI입니다.",
+            "아래 논문은 1차 정량 평가에서 [필독(Must-Read, 85점 이상)] 또는 [Critical Exception]으로 최종 확정된 핵심 논문입니다.",
+            "초록 원문에 철저히 근거하여 [Pass 2: 심층 임상·검사실 브리핑]을 JSON으로 작성하십시오.",
+            "",
+            f"출처: {item['source']} / 유형: {item['contentType']} / 발행일: {item.get('pubDate', '')}",
+            f"원제: {item['title']}",
+            f"1차 채점 결과: {p1_ai.get('importance')} ({p1_ai.get('importance_score')}점 · {p1_ai.get('score_breakdown')})",
+            f"Critical Exception 여부: {ce_desc}",
+            f"초록 원문:\n{abs_display}",
+            "",
+            "[작성 원칙 — 엄격 준수]",
+            "1. 환각·추측 절대 금지: 초록에 명시된 표본 수(n), 대조법, 민감도/특이도/일치도/MIC/OR/p값 등만 인용하십시오. 초록에 없는 수치는 절대 생성하지 마십시오.",
+            "2. fact_summary_ko (구조화된 원문 사실 심층 요약, 줄바꿈(•) 3~4개 항목):",
+            "   • [배경·설계] 연구 목적, 기관 규모·설계, 검체·균주 수(n) 및 대조법",
+            "   • [핵심 결과] 초록에 제시된 주요 정량 성능·임상 결과 수치",
+            "   • [결론·의의] 저자의 핵심 결론 및 기존 기준/방법 대비 차별점",
+            "3. ai_clinical_note (대학병원 진단검사의학과 전문의 심층 실무 가이드, 3~4문장):",
+            '   - 뻔한 상용구("참고가 될 것으로 사료됩니다", "중요성을 시사합니다" 등) 절대 금지.',
+            "   - (a) 검사실 실무 적용 포인트(분자진단·배양·MALDI-TOF·AST 판독/보고·정도관리 QC·감염관리 IC 중 해당 영역의 구체적 액션)",
+            "   - (b) 현장 도입·판독 시 검증해야 할 연구 한계 및 주의 함정(위양성/위음성, 균종 편중, 대조법 한계, 국내 역학 차이 등)",
+            "   - (c) Critical Exception 지정 논문인 경우, 검사실이 당장 점검해야 할 핵심 사항 1문장 포함.",
+        ]
+    )
+
+    schema = {
+        "type": "OBJECT",
+        "properties": {
+            "title_ko": {"type": "STRING"},
+            "fact_summary_ko": {"type": "STRING"},
+            "ai_clinical_note": {"type": "STRING"},
+        },
+        "required": ["title_ko", "fact_summary_ko", "ai_clinical_note"],
+    }
+
+    parsed, used_model = call_gemini_with_fallback(
+        prompt, schema, primary_model, fallback_model, api_key, 0.1, thinking_level_p2, timeout_read=135
+    )
+    return parsed, used_model
 
 
 def summarize_outbreak_batch(
@@ -624,22 +849,21 @@ def summarize_outbreak_batch(
     prompt = "\n".join(
         [
             "당신은 대한민국 대학병원 진단검사의학과 전문의를 지원하는 감염병 감시 평가 AI입니다.",
-            f'아래 {len(chunk)}건의 국내외 감염병 동향·경보(KDCA/WHO)를 분석해 JSON 객체({{ "items": [...] }})로 반환하십시오.',
+            f'아래 {len(chunk)}건의 국내외 감염병 동향·경보(KDCA/WHO)를 분석해 JSON({{ "items": [...] }})으로 반환하십시오.',
             "",
             "[준수 원칙]",
-            '1. 원문에 없는 수치·국가·방역 조치를 절대 생성하지 마십시오. 학술 논문이 아니므로 "본 원저는" 같은 표현을 쓰지 마십시오.',
+            '1. 원문에 없는 수치·국가·방역 조치를 절대 생성하지 마십시오. "본 원저는" 같은 논문 표현을 쓰지 마십시오.',
             "2. fact_summary_ko:",
-            "   - KDCA 표본감시 주간소식지: 인플루엔자(ILI)·코로나19 입원·호흡기 바이러스 상위·장관감염증 핵심 수치를 줄바꿈(•) 4줄 이내로 압축하십시오.",
-            "   - KDCA 경보 / WHO DONs: 발생 국가·지역, 확진/사망 규모(치명률), 실험실 확진 검사법(PCR·항체·mNGS), 방역 권고를 2~3문장으로 요약하십시오.",
-            "3. ai_clinical_note (1~2문장):",
-            '   - 상용구("중요성을 시사합니다" 등)를 피하고, 국내 대학병원 진단검사실·감염관리실의 구체적 대응 포인트(검체 채취, PCR/배양 감별, 여행력 문진, 격리 등)를 작성하십시오.',
-            "4. [감염병 경보 100점 정량 채점 — 각 0~25점 정수, 무분별한 고득점 금지]:",
-            "   - score_domestic (국내 유입·발생 직접성, 0~25): 국내 발생·전국 유행주의보·국내 CRE/다제내성 지침=22~25 / 인접국·주요 여행지·항공 유입 가능=14~20 / 원거리 국지 발생=0~12",
-            "   - score_severity (병원체 위험도·급증 강도, 0~25): 1급 감염병·콜레라·고치명률 출혈열·중증 급증=20~25 / 중등도 유행 증가=12~19 / 정례 보고·완만 추세=0~11",
-            "   - score_action (국내 검사실·감염관리 즉각 대응 필요성, 0~25): 즉시 감별검사·선제격리·프로토콜 변경 필요=20~25 / 주의 모니터링=12~19 / 단순 참고=0~11",
-            "   - score_novelty (신규성·최초 발생 여부, 0~25): 최초 인체감염·10년 만의 국내 발생·비유행국 첫 자국 전파·유행주의보 신규 발령=22~25 / 새로운 국면=12~19 / 동일 해외 유행의 반복 누적 업데이트(예: 콩고 에볼라 주간 반복 보고)·정례 연보 발간·특이사항 없는 정례 표본감시=0~8",
-            "5. topic_category (4개 중 하나):",
-            '   "표본감시 주간요약(호흡기·장관)" | "의료관련감염병·내성(HAI/CRE)" | "국내 긴급경보(KDCA)" | "국제 감염병 경보(WHO)"',
+            "   - KDCA 표본감시 주간소식지: 인플루엔자(ILI)·코로나19 입원·호흡기 바이러스 상위·장관감염증 핵심 수치를 줄바꿈(•) 4줄 이내로 압축.",
+            "   - KDCA 경보 / WHO DONs: 발생 국가·지역, 확진/사망 규모(치명률), 실험실 확진 검사법(PCR·항체·mNGS), 방역 권고를 2~3문장으로 요약.",
+            "3. ai_clinical_note (1~2문장): 뻔한 상용구를 피하고 국내 대학병원 진단검사실·감염관리실의 구체적 대응 포인트 작성.",
+            "4. [100점 고정 앵커 채점 (35/30/20/15) — 각 선택지 중 정확히 1개만 선택]:",
+            '   - score_domestic (국내 유입·발생 직접성 35점, "35"|"26"|"16"|"6"): 국내 발생·전국 유행주의보·국내 CRE 지침=35 / 인접국·주요 여행지 유입 우려=26 / 원거리 주요국=16 / 국지적 원거리=6',
+            '   - score_severity (위험도·급증 강도 30점, "30"|"22"|"13"|"5"): 1급 감염병·콜레라·고치명률 출혈열·중증 급증=30 / 중등도 유행 증가=22 / 완만 추세·정례 보고=13 / 경미=5',
+            '   - score_action (검사실·감염관리 즉각 대응 필요성 20점, "20"|"14"|"8"|"3"): 즉시 감별검사·선제격리·지침 변경=20 / 주의 모니터링=14 / 참고=8 / 영향 미미=3',
+            '   - score_novelty (신규성·최초 발생 여부 15점, "15"|"11"|"6"|"2"): 최초 인체감염·10년 만의 국내 발생·신규 유행주의보=15 / 신규 국면=11 / 동일 해외 유행 반복 업데이트(예: 콩고 에볼라 주간 집계)·정례 연보·평시 표본감시=2',
+            '5. Critical Exception E4 판정: "NONE" | "E4" — 국내 검사 전략 변경·긴급 대응이 즉각 필요한 공식 경보이고 필수 3조건(검사실 직결, 중대 영향, 공식 근거)을 모두 충족할 때만 "E4".',
+            '6. topic_category: "표본감시 주간요약(호흡기·장관)" | "의료관련감염병·내성(HAI/CRE)" | "국내 긴급경보(KDCA)" | "국제 감염병 경보(WHO)"',
             "",
             "\n\n".join(blocks),
         ]
@@ -664,10 +888,15 @@ def summarize_outbreak_batch(
                                 "국제 감염병 경보(WHO)",
                             ],
                         },
-                        "score_domestic": {"type": "INTEGER"},
-                        "score_severity": {"type": "INTEGER"},
-                        "score_action": {"type": "INTEGER"},
-                        "score_novelty": {"type": "INTEGER"},
+                        "score_domestic": {"type": "STRING", "enum": ["35", "26", "16", "6"]},
+                        "score_severity": {"type": "STRING", "enum": ["30", "22", "13", "5"]},
+                        "score_action": {"type": "STRING", "enum": ["20", "14", "8", "3"]},
+                        "score_novelty": {"type": "STRING", "enum": ["15", "11", "6", "2"]},
+                        "exception_type": {"type": "STRING", "enum": ["NONE", "E4"]},
+                        "cond_lab_direct": {"type": "BOOLEAN"},
+                        "cond_high_impact": {"type": "BOOLEAN"},
+                        "cond_reliable_evidence": {"type": "BOOLEAN"},
+                        "exception_reason": {"type": "STRING"},
                         "importance_reason": {"type": "STRING"},
                         "fact_summary_ko": {"type": "STRING"},
                         "ai_clinical_note": {"type": "STRING"},
@@ -680,6 +909,11 @@ def summarize_outbreak_batch(
                         "score_severity",
                         "score_action",
                         "score_novelty",
+                        "exception_type",
+                        "cond_lab_direct",
+                        "cond_high_impact",
+                        "cond_reliable_evidence",
+                        "exception_reason",
                         "importance_reason",
                         "fact_summary_ko",
                         "ai_clinical_note",
@@ -690,26 +924,19 @@ def summarize_outbreak_batch(
         "required": ["items"],
     }
 
-    raw_map, used_model = call_gemini_with_fallback(
-        prompt, schema, lite_model, fallback_model, api_key, 0.1, ""
+    parsed, used_model = call_gemini_with_fallback(
+        prompt, schema, lite_model, fallback_model, api_key, 0.1, "", timeout_read=90
     )
 
-    enriched: Dict[str, Dict[str, Any]] = {}
-    for uid, ai in raw_map.items():
-        s1 = clamp_score(ai.get("score_domestic"), 25)
-        s2 = clamp_score(ai.get("score_severity"), 25)
-        s3 = clamp_score(ai.get("score_action"), 25)
-        s4 = clamp_score(ai.get("score_novelty"), 25)
-        total = s1 + s2 + s3 + s4
-        ai["importance_score"] = total
-        ai["importance"] = score_to_tier(total, cutoffs)
-        ai["score_breakdown"] = f"국내영향:{s1} | 위험도:{s2} | 대응시급:{s3} | 신규성:{s4}"
-        enriched[uid] = ai
-    return enriched, used_model
+    out: Dict[str, Dict[str, Any]] = {}
+    for item in parsed.get("items", []):
+        if isinstance(item, dict) and item.get("uid"):
+            out[str(item["uid"])] = evaluate_outbreak_score_and_exception(item, cutoffs)
+    return out, used_model
 
 
 # =====================================================================
-# Source Fetchers (Full 2026 Backfill + KDCA Sentinel Multi-Page)
+# Source Fetchers (KDCA API / Sentinel / Urgent RSS / WHO / PubMed / Crossref)
 # =====================================================================
 def call_kdca_eid(api_key: str, op_name: str, params: Dict[str, str]) -> List[Dict[str, Any]]:
     safe_key = api_key if "%" in api_key else urllib.parse.quote(api_key, safe="")
@@ -880,8 +1107,7 @@ def sync_kdca_surveillance_api(ss, kdca_api_key: str, now_str: str) -> Tuple[int
 
 
 def fetch_kdca_sentinel_weekly(start_date_str: str, existing_uids: Optional[Set[str]] = None) -> List[Dict[str, Any]]:
-    """KDCA 표본감시 주간소식지 다중 페이지 순회 (2026년 1주차부터 전체 소급 수집)"""
-    cutoff = parse_flexible_date(start_date_str) or datetime.date(2026, 1, 1)
+    cutoff = parse_flexible_date(start_date_str) or datetime.date(2026, 7, 1)
     existing = existing_uids or set()
     out: List[Dict[str, Any]] = []
     seen_docs: Set[str] = set()
@@ -918,7 +1144,6 @@ def fetch_kdca_sentinel_weekly(start_date_str: str, existing_uids: Optional[Set[
             uid = f"KDCA_SENTINEL_{doc_no}"
             detail_url = f"https://dportal.kdca.go.kr/pot/bbs/BD_selectBbs.do?q_bbsSn=1010&q_bbsDocNo={doc_no}&q_clsfNo=2"
             body_text = title
-            # Skip detail HTTP request for already-collected items to stay fast and polite
             if uid not in existing:
                 try:
                     time.sleep(0.25)
@@ -959,7 +1184,7 @@ def fetch_kdca_urgent_alerts(start_date_str: str) -> List[Dict[str, Any]]:
     res = HTTP.get(url, timeout=(15, 30))
     if res.status_code != 200:
         raise RuntimeError(f"KDCA RSS HTTP {res.status_code}")
-    cutoff = parse_flexible_date(start_date_str) or datetime.date(2026, 1, 1)
+    cutoff = parse_flexible_date(start_date_str) or datetime.date(2026, 7, 1)
     root = ET.fromstring(res.content)
     channel = root.find("channel")
     if channel is None:
@@ -1003,7 +1228,7 @@ def fetch_who_dons(start_date_str: str) -> List[Dict[str, Any]]:
     res = HTTP.get(url, timeout=(15, 30))
     if res.status_code != 200:
         raise RuntimeError(f"WHO DONs API HTTP {res.status_code}")
-    cutoff = parse_flexible_date(start_date_str) or datetime.date(2026, 1, 1)
+    cutoff = parse_flexible_date(start_date_str) or datetime.date(2026, 7, 1)
     data = res.json()
     rows = data if isinstance(data, list) else data.get("value", [])
     out = []
@@ -1042,7 +1267,7 @@ def fetch_who_dons(start_date_str: str) -> List[Dict[str, Any]]:
 
 
 def fetch_acm_crossref(start_date_str: str) -> List[Dict[str, Any]]:
-    from_date = (parse_flexible_date(start_date_str) or datetime.date(2026, 1, 1)).strftime("%Y-%m-%d")
+    from_date = (parse_flexible_date(start_date_str) or datetime.date(2026, 7, 1)).strftime("%Y-%m-%d")
     url = f"https://api.crossref.org/journals/2288-6850/works?filter=from-pub-date:{from_date}&rows=100&sort=published&order=desc"
     res = HTTP.get(url, timeout=(15, 30))
     if res.status_code != 200:
@@ -1205,6 +1430,85 @@ def detect_guideline_org(title: str, journal: str) -> str:
     if re.search(r"ESCMID|European Society of Clinical Microbiology", title, re.IGNORECASE):
         return "ESCMID"
     return f"Guideline · {journal}" if journal else "Guideline"
+
+
+# =====================================================================
+# Stratified 20-Item Pilot Selector (2026-07-01+ Papers & Guidelines)
+# =====================================================================
+def select_stratified_pilot_20(records: List[Dict[str, Any]], target_n: int = 20) -> List[Dict[str, Any]]:
+    """
+    2026-07-01 이후 논문·가이드라인에서 저널·유형(가이드라인/대규모평가/리뷰/소규모/증례 등)별
+    균형 잡힌 20편을 결정론적으로 층화 추출함.
+    """
+    h2_pool = [
+        r for r in records
+        if r.get("contentType") in ("paper", "guideline") and safe_str(r.get("pubDate")) >= H2_GUARD_START_DATE
+    ]
+    if len(h2_pool) <= target_n:
+        return h2_pool
+
+    def classify_stratum_tag(r: Dict[str, Any]) -> str:
+        t = (r.get("title") or "").lower()
+        if r.get("contentType") == "guideline" or "guideline" in t or "consensus" in t:
+            return "guideline"
+        if re.search(r"\b(review|narrative|overview|update on|primer|myths|how do i|how to)\b", t):
+            return "review"
+        if re.search(r"\b(case|mastoiditis|infant|first evidence|outbreak in a|letter|comment)\b", t):
+            return "edge_case"
+        if re.search(r"\b(randomized|trial|multicenter|meta-analysis|nationwide|breakpoint|carbapenemase|clsi|eucast)\b", t):
+            return "high_impact"
+        return "standard"
+
+    def bucket_of(r: Dict[str, Any]) -> str:
+        if r.get("contentType") == "guideline":
+            return "GUIDELINE"
+        src = safe_str(r.get("source")).upper()
+        if src in ("JCM", "CMI", "CID", "ACM"):
+            return src
+        return "OTHER"
+
+    quotas = [("GUIDELINE", 2), ("JCM", 6), ("CMI", 5), ("CID", 5), ("ACM", 2)]
+    by_bucket: Dict[str, List[Dict[str, Any]]] = {}
+    for r in sorted(h2_pool, key=lambda x: (x.get("pubDate", ""), x.get("uid", "")), reverse=True):
+        by_bucket.setdefault(bucket_of(r), []).append(r)
+
+    selected: List[Dict[str, Any]] = []
+    selected_uids: Set[str] = set()
+
+    def pick_diverse(pool: List[Dict[str, Any]], k: int) -> List[Dict[str, Any]]:
+        if not pool or k <= 0:
+            return []
+        order = ["high_impact", "review", "edge_case", "standard", "guideline"]
+        tag_groups: Dict[str, List[Dict[str, Any]]] = {tg: [] for tg in order}
+        for item in pool:
+            if item["uid"] in selected_uids:
+                continue
+            tg = classify_stratum_tag(item)
+            tag_groups.setdefault(tg, []).append(item)
+
+        picked: List[Dict[str, Any]] = []
+        # Round-robin across strata tags for balanced boundary testing
+        while len(picked) < k:
+            progressed = False
+            for tg in order:
+                if tag_groups.get(tg) and len(picked) < k:
+                    cand = tag_groups[tg].pop(0)
+                    picked.append(cand)
+                    selected_uids.add(cand["uid"])
+                    progressed = True
+            if not progressed:
+                break
+        return picked
+
+    for bname, q in quotas:
+        selected.extend(pick_diverse(by_bucket.get(bname, []), q))
+
+    # Top up from remaining pool if any bucket fell short
+    if len(selected) < target_n:
+        rem = [r for r in h2_pool if r["uid"] not in selected_uids]
+        selected.extend(pick_diverse(rem, target_n - len(selected)))
+
+    return selected[:target_n]
 
 
 # =====================================================================
@@ -1374,6 +1678,9 @@ def write_dashboard_json(
         week_key = safe_str(r.get("week_key")) or get_iso_week_key(pub_date)
         raw_score = safe_float(r.get("importance_score"))
         score_val = int(round(raw_score)) if raw_score is not None else None
+        ce_code = safe_str(r.get("critical_exception")).upper()
+        if ce_code not in EXCEPTION_LABELS:
+            ce_code = ""
         items.append(
             {
                 "uid": uid,
@@ -1386,6 +1693,8 @@ def write_dashboard_json(
                 "importance": safe_str(r.get("importance")) or "Medium",
                 "importance_score": score_val,
                 "score_breakdown": safe_str(r.get("score_breakdown")),
+                "critical_exception": ce_code,
+                "exception_reason": safe_str(r.get("exception_reason")) if ce_code else "",
                 "fact_summary_ko": safe_str(r.get("fact_summary_ko")),
                 "ai_clinical_note": safe_str(r.get("ai_clinical_note")),
                 "pmid": clean_pmid(r.get("pmid")),
@@ -1401,7 +1710,7 @@ def write_dashboard_json(
             }
         )
 
-    items.sort(key=lambda x: (x["pub_date"], x["importance_score"] or -1, x["uid"]), reverse=True)
+    items.sort(key=lambda x: (x["pub_date"], 1 if x["critical_exception"] else 0, x["importance_score"] or -1, x["uid"]), reverse=True)
 
     logs = []
     for r in reversed(log_rows[-30:]):
@@ -1420,14 +1729,22 @@ def write_dashboard_json(
             }
         )
 
-    lite_model, deep_model, fallback_model, thinking = get_gemini_models(cfg_map)
+    lite_model, deep_model, fallback_model, thinking_p1, thinking_p2 = get_gemini_models(cfg_map)
     cutoffs = get_score_cutoffs(cfg_map)
     payload = {
         "meta": {
             "version": CODE_VERSION,
             "generated_at": now_kst_str(),
             "total_items": len(items),
-            "models": {"deep": deep_model, "fallback": fallback_model, "lite": lite_model, "thinking": thinking},
+            "serving_mode": "GitHub Pages (메인 단일화)",
+            "h2_guard_date": H2_GUARD_START_DATE,
+            "models": {
+                "deep": deep_model,
+                "fallback": fallback_model,
+                "lite": lite_model,
+                "thinking_p1": thinking_p1,
+                "thinking_p2": thinking_p2,
+            },
             "cutoffs": cutoffs,
         },
         "items": items,
@@ -1465,17 +1782,80 @@ def sync_sheet_to_dashboard_json(ss) -> None:
 
 
 # =====================================================================
+# Shared 2-Pass Execution Helper for Papers & Guidelines
+# =====================================================================
+def execute_two_pass_chunk(
+    chunk: List[Dict[str, Any]],
+    deep_model: str,
+    fallback_model: str,
+    gemini_key: str,
+    thinking_p1: str,
+    thinking_p2: str,
+    cutoffs: Dict[str, int],
+) -> Tuple[Dict[str, Dict[str, Any]], int, int]:
+    """Pass 1(low) 전수 채점 -> Must-Read 또는 Critical Exception 대상만 Pass 2(high) 심층 요약"""
+    p1_map, used_p1 = summarize_deep_pass1_batch(
+        chunk, deep_model, fallback_model, gemini_key, thinking_p1, cutoffs
+    )
+    fallback_hits = len(chunk) if used_p1 != deep_model else 0
+    pass2_count = 0
+
+    for it in chunk:
+        ai = p1_map.get(it["uid"])
+        if not ai:
+            continue
+        pass2_done = False
+        used_p2 = ""
+        if ai.get("needs_pass2"):
+            try:
+                p2_res, used_p2 = run_pass2_deep_summary(
+                    it, ai, deep_model, fallback_model, gemini_key, thinking_p2
+                )
+                if used_p2 != deep_model:
+                    fallback_hits += 1
+                ai["title_ko"] = p2_res.get("title_ko") or ai.get("title_ko") or it["title"]
+                ai["fact_summary_ko"] = p2_res.get("fact_summary_ko") or ai.get("fact_summary_ko", "")
+                ai["ai_clinical_note"] = p2_res.get("ai_clinical_note") or ai.get("ai_clinical_note", "")
+                pass2_done = True
+                pass2_count += 1
+                print(
+                    f"    ★ Pass 2 심층 요약 완료: {it['uid']} "
+                    f"[{ai['importance']} {ai['importance_score']}점"
+                    f"{' / ' + ai['critical_exception'] if ai['critical_exception'] else ''}] ({used_p2})"
+                )
+                time.sleep(1.0)
+            except Exception as p2_err:
+                print(f"    [Pass 2 경고 — Pass 1 결과 보존] {it['uid']}: {p2_err}")
+
+        ai["pass2_applied"] = pass2_done
+        if pass2_done:
+            ai["summary_meta"] = f"{CODE_VERSION}|P1:{used_p1}({thinking_p1})+P2:{used_p2}({thinking_p2})"
+        else:
+            ai["summary_meta"] = f"{CODE_VERSION}|P1:{used_p1}({thinking_p1})"
+        ai["formatted_note"] = format_clinical_note(
+            ai.get("ai_clinical_note", ""),
+            ai.get("importance", "Medium"),
+            ai.get("importance_score", 0),
+            ai.get("critical_exception", ""),
+            pass2_done,
+        )
+    return p1_map, fallback_hits, pass2_count
+
+
+# =====================================================================
 # Main Modes
 # =====================================================================
-def mode_test_apis() -> None:
+def mode_test_apis(allow_h1: bool = False) -> None:
     print(f"=== 임상미생물 브리핑 {CODE_VERSION} API 연결 진단 ===")
     ss = connect_spreadsheet()
     cfg = load_config_map(ss)
-    lite_model, deep_model, fallback_model, thinking = get_gemini_models(cfg)
+    lite_model, deep_model, fallback_model, thinking_p1, thinking_p2 = get_gemini_models(cfg)
     cutoffs = get_score_cutoffs(cfg)
+    eff_start, guard_active = resolve_effective_paper_start(cfg, allow_h1)
     print(f"[OK] Google Sheets 연결 성공: {ss.title}")
-    print(f"   수집 시작일: 논문={cfg.get('collect_start_date', DEFAULT_PAPER_START_DATE)}, KDCA/WHO={cfg.get('kdca_start_date', DEFAULT_YEAR_START_DATE)}, 한도={cfg.get('pubmed_fetch_limit', '1000')}")
-    print(f"   4단계 컷오프: 필독>={cutoffs['must_read']}, 주목>={cutoffs['high']}, 참고>={cutoffs['medium']}")
+    print(f"   논문 수집 시작일: {eff_start} (상반기 소급 가드: {'ON - 7월 이후 보호' if guard_active else 'OFF'})")
+    print(f"   2-Pass 모델: P1={deep_model}({thinking_p1}) / P2={deep_model}({thinking_p2}) / 우회={fallback_model} / 경보={lite_model}")
+    print(f"   4단계 컷오프: Must-Read>={cutoffs['must_read']}, High>={cutoffs['high']}, Medium>={cutoffs['medium']}")
 
     gemini_key = os.environ.get("GEMINI_API_KEY", "").strip()
     kdca_key = os.environ.get("KDCA_API_KEY", "").strip()
@@ -1483,7 +1863,7 @@ def mode_test_apis() -> None:
 
     if gemini_key:
         print(f"1. Gemini 경량({lite_model}): {probe_gemini_model(lite_model, gemini_key)}")
-        print(f"   Gemini 상위({deep_model}, thinking={thinking}): {probe_gemini_model(deep_model, gemini_key)}")
+        print(f"   Gemini 주력({deep_model}): {probe_gemini_model(deep_model, gemini_key)}")
         print(f"   Gemini 우회({fallback_model}): {probe_gemini_model(fallback_model, gemini_key)}")
     else:
         print("1. GEMINI_API_KEY: 미등록")
@@ -1506,6 +1886,171 @@ def mode_test_apis() -> None:
         print("3. KDCA_API_KEY: 미등록")
 
 
+def mode_pilot_20() -> None:
+    """
+    [1순위 검증 모드] 본 DB(items)를 전혀 수정하지 않고,
+    2026-07-01 이후 논문·가이드라인 중 층화 표본 20편을 추출하여
+    v8.2 루브릭(35/30/20/15)·유형별 Cap·Critical Exception·2-Pass 차등 요약을 실행하고
+    별도 시트 탭(pilot_v82)에만 출력함.
+    """
+    ss = connect_spreadsheet()
+    cfg = load_config_map(ss)
+    item_ws = ss.worksheet(SHEET_ITEMS)
+
+    gemini_key = os.environ.get("GEMINI_API_KEY", "").strip()
+    ncbi_key = os.environ.get("NCBI_API_KEY", "").strip()
+    if not gemini_key:
+        raise RuntimeError("GEMINI_API_KEY 가 설정되지 않았습니다.")
+
+    _, deep_model, fallback_model, thinking_p1, thinking_p2 = get_gemini_models(cfg)
+    cutoffs = get_score_cutoffs(cfg)
+    run_id = "GH_PILOT20_" + now_kst().strftime("%Y%m%d_%H%M%S")
+    now_str = now_kst_str()
+
+    all_values = item_ws.get_all_values()
+    if len(all_values) < 2:
+        print("파일럿 대상 데이터가 없습니다.")
+        return
+
+    records = []
+    for row in all_values[1:]:
+        r = row + [""] * max(0, 23 - len(row))
+        uid = r[0].strip()
+        if not uid:
+            continue
+        records.append(
+            {
+                "uid": uid,
+                "source": r[1].strip(),
+                "pubDate": r[2].strip()[:10],
+                "title": r[4].strip(),
+                "oldImportance": r[7].strip(),
+                "pmid": clean_pmid(r[10]),
+                "doi": r[11].strip(),
+                "sourceUrl": r[12].strip(),
+                "contentType": r[15].strip() or "paper",
+            }
+        )
+
+    sample_20 = select_stratified_pilot_20(records, target_n=20)
+    print(f"=== [pilot_20] 2026-07 이후 층화 표본 {len(sample_20)}편 선정 (본 DB items 보호) ===")
+    for s in sample_20:
+        print(f"  - {s['uid']} | {s['source']} | {s['pubDate']} | 기존:{s['oldImportance']} | {s['title'][:60]}")
+
+    pmids = [t["pmid"] for t in sample_20 if t["pmid"]]
+    abs_by_pmid: Dict[str, str] = {}
+    if pmids:
+        print(f"PubMed 원문 초록 {len(pmids)}건 조회 중...")
+        for art in fetch_pubmed_articles(pmids, ncbi_key):
+            abs_by_pmid[str(art["pmid"])] = art["abstractText"]
+
+    for t in sample_20:
+        if t["pmid"] and t["pmid"] in abs_by_pmid:
+            t["rawText"] = abs_by_pmid[t["pmid"]]
+        elif t["doi"]:
+            t["rawText"] = fetch_crossref_abstract(t["doi"])
+            time.sleep(0.15)
+        else:
+            t["rawText"] = ""
+
+    pilot_headers = [
+        "uid",
+        "source",
+        "pub_date",
+        "content_type",
+        "old_importance",
+        "new_importance",
+        "importance_score",
+        "raw_score",
+        "study_type",
+        "cap_applied",
+        "critical_exception",
+        "exception_reason",
+        "pass2_applied",
+        "score_breakdown",
+        "title_ko",
+        "fact_summary_ko",
+        "ai_clinical_note",
+        "importance_reason",
+        "summary_meta",
+        "source_url",
+    ]
+    out_rows: List[List[Any]] = []
+    tier_counts = {"Must-Read": 0, "High": 0, "Medium": 0, "Low": 0}
+    cap_hits = 0
+    ce_hits = 0
+    p2_hits = 0
+    fb_hits = 0
+    errors: List[str] = []
+
+    for offset in range(0, len(sample_20), GEMINI_DEEP_BATCH_SIZE):
+        chunk = sample_20[offset : offset + GEMINI_DEEP_BATCH_SIZE]
+        try:
+            ai_map, fbh, p2h = execute_two_pass_chunk(
+                chunk, deep_model, fallback_model, gemini_key, thinking_p1, thinking_p2, cutoffs
+            )
+            fb_hits += fbh
+            p2_hits += p2h
+            for t in chunk:
+                ai = ai_map.get(t["uid"])
+                if not ai:
+                    continue
+                tier = ai["importance"]
+                tier_counts[tier] = tier_counts.get(tier, 0) + 1
+                if ai.get("cap_label"):
+                    cap_hits += 1
+                if ai.get("critical_exception"):
+                    ce_hits += 1
+                out_rows.append(
+                    [
+                        t["uid"],
+                        t["source"],
+                        t["pubDate"],
+                        t["contentType"],
+                        t["oldImportance"],
+                        tier,
+                        ai["importance_score"],
+                        ai["raw_score"],
+                        ai["study_type"],
+                        ai["cap_label"] or "-",
+                        ai["critical_exception"] or "-",
+                        ai["exception_reason"],
+                        "TRUE" if ai["pass2_applied"] else "FALSE",
+                        ai["score_breakdown"],
+                        ai.get("title_ko") or t["title"],
+                        ai.get("fact_summary_ko") or "",
+                        ai.get("formatted_note") or "",
+                        ai.get("importance_reason") or "",
+                        ai.get("summary_meta") or "",
+                        t["sourceUrl"],
+                    ]
+                )
+            time.sleep(1.2)
+        except Exception as e:
+            errors.append(f"{chunk[0]['uid']}: {str(e)[:120]}")
+            print(f"  [파일럿 오류] {chunk[0]['uid']}: {e}")
+
+    # Sort output rows: Critical Exception first, then importance_score descending
+    out_rows.sort(key=lambda r: (1 if r[10] != "-" else 0, safe_int(r[6])), reverse=True)
+
+    pilot_ws = get_or_create_worksheet(ss, SHEET_PILOT, pilot_headers)
+    pilot_ws.clear()
+    pilot_ws.update(range_name="A1", values=[pilot_headers] + out_rows, value_input_option="RAW")
+
+    summary_note = (
+        f"파일럿 20편({CODE_VERSION}) 완료 -> {SHEET_PILOT} 탭 저장 (본 DB 미변경) | "
+        f"Must-Read:{tier_counts['Must-Read']}, High:{tier_counts['High']}, Medium:{tier_counts['Medium']}, Low:{tier_counts['Low']} | "
+        f"Cap적용:{cap_hits}건, CriticalException:{ce_hits}건, Pass2심층:{p2_hits}건"
+    )
+    if fb_hits > 0:
+        summary_note += f" (503우회:{fb_hits}건)"
+    if errors:
+        summary_note += " / 오류: " + " | ".join(errors[:3])
+    print(f"[OK] {summary_note}")
+    status = "Success" if not errors else ("Partial" if out_rows else "Fail")
+    append_run_log(ss, run_id, now_str, "PILOT_20", status, len(sample_20), len(out_rows), 0, summary_note)
+
+
 def mode_reclassify_only() -> None:
     """config 시트의 4단계 점수 컷오프로 기존 점수가 있는 항목의 등급만 재계산 (AI 비용 0원)"""
     ss = connect_spreadsheet()
@@ -1522,7 +2067,7 @@ def mode_reclassify_only() -> None:
     changed = 0
     scored = 0
     for idx, row in enumerate(all_values[1:], start=2):
-        r = row + [""] * max(0, 21 - len(row))
+        r = row + [""] * max(0, 23 - len(row))
         sc = safe_float(r[19])
         if sc is None:
             continue
@@ -1542,7 +2087,7 @@ def mode_reclassify_only() -> None:
     sync_sheet_to_dashboard_json(ss)
 
 
-def mode_collect() -> None:
+def mode_collect(allow_h1: bool = False) -> None:
     ss = connect_spreadsheet()
     cfg = load_config_map(ss)
     item_ws = ss.worksheet(SHEET_ITEMS)
@@ -1558,13 +2103,18 @@ def mode_collect() -> None:
     now_str = now_kst_str()
     today_str = today_kst_str()
 
-    paper_start = cfg.get("collect_start_date", "").strip() or DEFAULT_PAPER_START_DATE
-    year_start = cfg.get("kdca_start_date", "").strip() or DEFAULT_YEAR_START_DATE
-    paper_days = calc_days_since(paper_start, 365)
-    year_days = calc_days_since(year_start, 365)
+    paper_start, guard_active = resolve_effective_paper_start(cfg, allow_h1)
+    if guard_active:
+        print(f"[상반기 소급 가드 활성] 논문 수집 범위를 {paper_start} 이후로 제한합니다 (상반기 소급 시 --allow-h1 사용).")
+    year_start = H2_GUARD_START_DATE if guard_active else (cfg.get("kdca_start_date", "").strip() or DEFAULT_YEAR_START_DATE)
+    guideline_start = cfg.get("kdca_start_date", "").strip() or DEFAULT_YEAR_START_DATE
+
+    paper_days = calc_days_since(paper_start, 160)
+    year_days = calc_days_since(year_start, 160)
+    guideline_days = calc_days_since(guideline_start, 365)
     fetch_limit = safe_int(cfg.get("pubmed_fetch_limit"), 1000)
 
-    lite_model, deep_model, fallback_model, deep_thinking = get_gemini_models(cfg)
+    lite_model, deep_model, fallback_model, thinking_p1, thinking_p2 = get_gemini_models(cfg)
     cutoffs = get_score_cutoffs(cfg)
     pubmed_delay = 0.15 if ncbi_key else 0.4
 
@@ -1584,7 +2134,7 @@ def mode_collect() -> None:
         except Exception as e:
             fetch_errors.append(f"전수신고API: {e}")
 
-    # 1) KDCA 표본감시(1주차~ 다중 페이지) · 긴급경보 · WHO
+    # 1) KDCA 표본감시 · 긴급경보 · WHO
     if is_enabled(cfg, "source_kdca_enabled"):
         try:
             sentinels = fetch_kdca_sentinel_weekly(year_start, existing_uids)
@@ -1619,7 +2169,7 @@ def mode_collect() -> None:
         except Exception as e:
             fetch_errors.append(f"WHO: {e}")
 
-    # 2) 가이드라인 (IDSA · ESCMID)
+    # 2) 가이드라인 (IDSA · ESCMID — 2026년 전체, 편수 적음)
     if is_enabled(cfg, "source_guideline_enabled"):
         try:
             g_query = (
@@ -1627,7 +2177,7 @@ def mode_collect() -> None:
                 ' OR "European Society of Clinical Microbiology"[Title]) AND ("Guideline"[Title] OR "Guidance"[Title] OR "Practice Guideline"[Publication Type]))'
                 + PUBMED_CLEAN_FILTER
             )
-            g_ids = fetch_pubmed_ids(g_query, year_days, fetch_limit, ncbi_key)
+            g_ids = fetch_pubmed_ids(g_query, guideline_days, fetch_limit, ncbi_key)
             total_fetched += len(g_ids)
             pending_g = [i for i in g_ids if f"GUIDE_{i}" not in existing_uids]
             total_dup += len(g_ids) - len(pending_g)
@@ -1651,7 +2201,7 @@ def mode_collect() -> None:
         except Exception as e:
             fetch_errors.append(f"GUIDELINE: {e}")
 
-    # 3) 4대 저널 (JCM · CMI · CID · ACM) - 2026-01-01부터 전체
+    # 3) 4대 저널 (JCM · CMI · CID · ACM) — 상반기 소급 가드 적용
     journals = [
         ("source_jcm_enabled", "JCM", '"J Clin Microbiol"[Journal]' + PUBMED_CLEAN_FILTER),
         ("source_cmi_enabled", "CMI", '"Clin Microbiol Infect"[Journal]' + PUBMED_CLEAN_FILTER),
@@ -1677,9 +2227,8 @@ def mode_collect() -> None:
                 for a in fetch_pubmed_articles(pending, ncbi_key):
                     if a["pmid"] in seen_pmids:
                         continue
-                    # Enforce clean start date floor (allow small EDat vs PubDate margin of 10 days or exact year)
                     pd_obj = parse_flexible_date(a["pubDate"])
-                    if paper_cutoff_date and pd_obj and pd_obj < (paper_cutoff_date - datetime.timedelta(days=15)):
+                    if paper_cutoff_date and pd_obj and pd_obj < paper_cutoff_date:
                         continue
                     seen_pmids.add(a["pmid"])
                     candidates.append(
@@ -1710,83 +2259,129 @@ def mode_collect() -> None:
         except Exception as e:
             fetch_errors.append(f"ACM: {e}")
 
-    print(f"[수집 대상 확정] 기간 {paper_start}~ / 조회 {total_fetched}건 / 중복 {total_dup}건 / 신규 요약 대상 {len(candidates)}건")
+    print(f"[수집 대상 확정] 논문 시작일:{paper_start} / 조회 {total_fetched}건 / 중복 {total_dup}건 / 신규 요약 대상 {len(candidates)}건")
 
     outbreak_q = [x for x in candidates if x["contentType"] == "outbreak"]
     deep_q = [x for x in candidates if x["contentType"] != "outbreak"]
     new_count = 0
     fallback_hits = 0
+    pass2_hits = 0
     ai_errors: List[str] = []
 
-    def process_q(queue: List[Dict[str, Any]], batch_size: int, primary_model: str, is_deep: bool):
-        nonlocal new_count, fallback_hits
-        for offset in range(0, len(queue), batch_size):
-            chunk = queue[offset : offset + batch_size]
-            try:
-                if is_deep:
-                    ai_map, used_model = summarize_deep_batch(
-                        chunk, primary_model, fallback_model, gemini_key, deep_thinking, cutoffs
-                    )
-                else:
-                    ai_map, used_model = summarize_outbreak_batch(
-                        chunk, primary_model, fallback_model, gemini_key, cutoffs
-                    )
-                if used_model != primary_model:
-                    fallback_hits += len(chunk)
+    # Outbreak queue (lite)
+    for offset in range(0, len(outbreak_q), GEMINI_LITE_BATCH_SIZE):
+        chunk = outbreak_q[offset : offset + GEMINI_LITE_BATCH_SIZE]
+        try:
+            ai_map, used_model = summarize_outbreak_batch(
+                chunk, lite_model, fallback_model, gemini_key, cutoffs
+            )
+            if used_model != lite_model:
+                fallback_hits += len(chunk)
+            rows_to_append = []
+            for it in chunk:
+                ai = ai_map.get(it["uid"])
+                if not ai:
+                    continue
+                week_key = get_iso_week_key(it["pubDate"] or today_str)
+                note = format_clinical_note(
+                    ai.get("ai_clinical_note", ""),
+                    ai["importance"],
+                    ai["importance_score"],
+                    ai["critical_exception"],
+                    False,
+                )
+                rows_to_append.append(
+                    [
+                        it["uid"],
+                        it["source"],
+                        it["pubDate"],
+                        now_str,
+                        it["title"],
+                        ai.get("title_ko") or it["title"],
+                        ai.get("topic_category") or "국내 긴급경보(KDCA)",
+                        ai["importance"],
+                        ai.get("fact_summary_ko") or "",
+                        note,
+                        "",
+                        "",
+                        it.get("sourceUrl", ""),
+                        it.get("accessStatus", "Public"),
+                        False,
+                        "outbreak",
+                        week_key,
+                        f"{CODE_VERSION}|{used_model}",
+                        ai.get("importance_reason", ""),
+                        ai["importance_score"],
+                        ai["score_breakdown"],
+                        ai["critical_exception"],
+                        ai["exception_reason"],
+                    ]
+                )
+            if rows_to_append:
+                item_ws.append_rows(rows_to_append, value_input_option="RAW")
+                new_count += len(rows_to_append)
+                print(f"  + 경보 {len(rows_to_append)}건 저장 ({used_model}, 누적 {new_count}/{len(candidates)})")
+            time.sleep(1.0)
+        except Exception as e:
+            ai_errors.append(f"{chunk[0]['uid']}: {str(e)[:120]}")
+            print(f"  [경보 요약 오류] {chunk[0]['uid']}: {e}")
 
-                rows_to_append = []
-                for it in chunk:
-                    ai = ai_map.get(it["uid"])
-                    if not ai:
-                        continue
-                    week_key = get_iso_week_key(it["pubDate"] or today_str)
-                    score = ai.get("importance_score", 0)
-                    tier = ai.get("importance", "Medium")
-                    note = format_clinical_note(
-                        ai.get("ai_clinical_note", ""), tier, ai.get("primary_axis", ""), score, is_deep
-                    )
-                    rows_to_append.append(
-                        [
-                            it["uid"],
-                            it["source"],
-                            it["pubDate"],
-                            now_str,
-                            it["title"],
-                            ai.get("title_ko") or it["title"],
-                            ai.get("topic_category") or "기타",
-                            tier,
-                            ai.get("fact_summary_ko") or "",
-                            note,
-                            it.get("pmid", ""),
-                            it.get("doi", ""),
-                            it.get("sourceUrl", ""),
-                            it.get("accessStatus", "Public"),
-                            False,
-                            it["contentType"],
-                            week_key,
-                            f"{CODE_VERSION}|{used_model}",
-                            ai.get("importance_reason", ""),
-                            score,
-                            ai.get("score_breakdown", ""),
-                        ]
-                    )
-                if rows_to_append:
-                    item_ws.append_rows(rows_to_append, value_input_option="RAW")
-                    new_count += len(rows_to_append)
-                    print(f"  + {len(rows_to_append)}건 저장 ({used_model}, 누적 {new_count}/{len(candidates)})")
-                time.sleep(1.2)
-            except Exception as e:
-                ai_errors.append(f"{chunk[0]['uid']}: {str(e)[:120]}")
-                print(f"  [요약 오류] {chunk[0]['uid']}: {e}")
-
-    process_q(outbreak_q, GEMINI_LITE_BATCH_SIZE, lite_model, False)
-    process_q(deep_q, GEMINI_DEEP_BATCH_SIZE, deep_model, True)
+    # Deep queue (2-Pass)
+    for offset in range(0, len(deep_q), GEMINI_DEEP_BATCH_SIZE):
+        chunk = deep_q[offset : offset + GEMINI_DEEP_BATCH_SIZE]
+        try:
+            ai_map, fbh, p2h = execute_two_pass_chunk(
+                chunk, deep_model, fallback_model, gemini_key, thinking_p1, thinking_p2, cutoffs
+            )
+            fallback_hits += fbh
+            pass2_hits += p2h
+            rows_to_append = []
+            for it in chunk:
+                ai = ai_map.get(it["uid"])
+                if not ai:
+                    continue
+                week_key = get_iso_week_key(it["pubDate"] or today_str)
+                rows_to_append.append(
+                    [
+                        it["uid"],
+                        it["source"],
+                        it["pubDate"],
+                        now_str,
+                        it["title"],
+                        ai.get("title_ko") or it["title"],
+                        ai.get("topic_category") or "기타",
+                        ai["importance"],
+                        ai.get("fact_summary_ko") or "",
+                        ai["formatted_note"],
+                        it.get("pmid", ""),
+                        it.get("doi", ""),
+                        it.get("sourceUrl", ""),
+                        it.get("accessStatus", "Public"),
+                        False,
+                        it["contentType"],
+                        week_key,
+                        ai["summary_meta"],
+                        ai.get("importance_reason", ""),
+                        ai["importance_score"],
+                        ai["score_breakdown"],
+                        ai["critical_exception"],
+                        ai["exception_reason"],
+                    ]
+                )
+            if rows_to_append:
+                item_ws.append_rows(rows_to_append, value_input_option="RAW")
+                new_count += len(rows_to_append)
+                print(f"  + 논문·지침 {len(rows_to_append)}건 저장 (누적 {new_count}/{len(candidates)})")
+            time.sleep(1.2)
+        except Exception as e:
+            ai_errors.append(f"{chunk[0]['uid']}: {str(e)[:120]}")
+            print(f"  [요약 오류] {chunk[0]['uid']}: {e}")
 
     notes = status_notes + [
-        f"GitHub Actions({CODE_VERSION}) · 시작일:{paper_start} · 상위:{deep_model}/{deep_thinking}(우회:{fallback_model})"
+        f"GitHub Actions({CODE_VERSION}) · 논문기준:{paper_start}({'하반기가드ON' if guard_active else '전체'}) · Pass2심층:{pass2_hits}건"
     ]
     if fallback_hits > 0:
-        notes.append(f"503 우회 처리 {fallback_hits}건")
+        notes.append(f"503 우회 {fallback_hits}건")
     if not candidates and not fetch_errors:
         notes.append("신규 항목 없음")
     if fetch_errors:
@@ -1799,7 +2394,7 @@ def mode_collect() -> None:
     sync_sheet_to_dashboard_json(ss)
 
 
-def mode_resummarize_all(force: bool = False) -> None:
+def mode_resummarize_all(force: bool = False, allow_h1: bool = False) -> None:
     ss = connect_spreadsheet()
     cfg = load_config_map(ss)
     item_ws = ss.worksheet(SHEET_ITEMS)
@@ -1810,8 +2405,9 @@ def mode_resummarize_all(force: bool = False) -> None:
     if not gemini_key:
         raise RuntimeError("GEMINI_API_KEY 가 설정되지 않았습니다.")
 
-    lite_model, deep_model, fallback_model, deep_thinking = get_gemini_models(cfg)
+    lite_model, deep_model, fallback_model, thinking_p1, thinking_p2 = get_gemini_models(cfg)
     cutoffs = get_score_cutoffs(cfg)
+    eff_start, guard_active = resolve_effective_paper_start(cfg, allow_h1)
     run_id = "GH_RESUM_" + now_kst().strftime("%Y%m%d_%H%M%S")
     now_str = now_kst_str()
 
@@ -1822,20 +2418,26 @@ def mode_resummarize_all(force: bool = False) -> None:
 
     deep_targets = []
     outbreak_targets = []
+    h1_skipped = 0
     for idx, row in enumerate(all_values[1:], start=2):
-        r = row + [""] * max(0, 21 - len(row))
+        r = row + [""] * max(0, 23 - len(row))
         uid = r[0].strip()
         if not uid:
             continue
+        pub_date = r[2].strip()[:10]
         ctype = r[15].strip() or "paper"
         meta = r[17].strip()
         if (not force) and meta.startswith(f"{CODE_VERSION}|"):
+            continue
+        # 상반기 소급 가드: allow_h1=False일 때 2026-07-01 이전 논문은 익월 크레딧 단계로 보류
+        if guard_active and ctype == "paper" and pub_date and pub_date < H2_GUARD_START_DATE:
+            h1_skipped += 1
             continue
         rec = {
             "rowIndex": idx,
             "uid": uid,
             "source": r[1].strip(),
-            "pubDate": r[2].strip()[:10],
+            "pubDate": pub_date,
             "title": r[4].strip(),
             "factOld": r[8].strip(),
             "pmid": clean_pmid(r[10]),
@@ -1848,8 +2450,8 @@ def mode_resummarize_all(force: bool = False) -> None:
             deep_targets.append(rec)
 
     print(
-        f"[v8.1 재요약 대상] 논문·가이드라인 {len(deep_targets)}건 ({deep_model}/{deep_thinking}, 우회:{fallback_model})"
-        f" / 감염병 경보 {len(outbreak_targets)}건 ({lite_model})"
+        f"[v8.2 재요약 대상] 논문·가이드라인 {len(deep_targets)}건 (상반기가드 제외 {h1_skipped}건) / "
+        f"감염병 경보 {len(outbreak_targets)}건"
     )
 
     pmids = [t["pmid"] for t in deep_targets if t["pmid"]]
@@ -1870,26 +2472,22 @@ def mode_resummarize_all(force: bool = False) -> None:
 
     updated_deep = 0
     fallback_hits = 0
+    pass2_hits = 0
     errors: List[str] = []
 
     for offset in range(0, len(deep_targets), GEMINI_DEEP_BATCH_SIZE):
         chunk = deep_targets[offset : offset + GEMINI_DEEP_BATCH_SIZE]
         try:
-            ai_map, used_model = summarize_deep_batch(
-                chunk, deep_model, fallback_model, gemini_key, deep_thinking, cutoffs
+            ai_map, fbh, p2h = execute_two_pass_chunk(
+                chunk, deep_model, fallback_model, gemini_key, thinking_p1, thinking_p2, cutoffs
             )
-            if used_model != deep_model:
-                fallback_hits += len(chunk)
+            fallback_hits += fbh
+            pass2_hits += p2h
             batch_updates = []
             for t in chunk:
                 ai = ai_map.get(t["uid"])
                 if not ai:
                     continue
-                score = ai.get("importance_score", 0)
-                tier = ai.get("importance", "Medium")
-                note = format_clinical_note(
-                    ai.get("ai_clinical_note", ""), tier, ai.get("primary_axis", ""), score, True
-                )
                 row_i = t["rowIndex"]
                 batch_updates.append(
                     {
@@ -1897,27 +2495,29 @@ def mode_resummarize_all(force: bool = False) -> None:
                         "values": [[
                             ai.get("title_ko") or t["title"],
                             ai.get("topic_category") or "기타",
-                            tier,
+                            ai["importance"],
                             ai.get("fact_summary_ko") or "",
-                            note,
+                            ai["formatted_note"],
                         ]],
                     }
                 )
                 batch_updates.append(
                     {
-                        "range": f"R{row_i}:U{row_i}",
+                        "range": f"R{row_i}:W{row_i}",
                         "values": [[
-                            f"{CODE_VERSION}|{used_model}",
+                            ai["summary_meta"],
                             ai.get("importance_reason", ""),
-                            score,
-                            ai.get("score_breakdown", ""),
+                            ai["importance_score"],
+                            ai["score_breakdown"],
+                            ai["critical_exception"],
+                            ai["exception_reason"],
                         ]],
                     }
                 )
                 updated_deep += 1
             if batch_updates:
                 item_ws.batch_update(batch_updates, value_input_option="RAW")
-            print(f"  [논문·가이드라인] {updated_deep}/{len(deep_targets)}건 갱신 ({used_model})")
+            print(f"  [논문·가이드라인] {updated_deep}/{len(deep_targets)}건 갱신 (Pass2 누계:{pass2_hits})")
             time.sleep(1.2)
         except Exception as e:
             errors.append(f"{chunk[0]['uid']}: {str(e)[:120]}")
@@ -1937,9 +2537,13 @@ def mode_resummarize_all(force: bool = False) -> None:
                 ai = ai_map.get(t["uid"])
                 if not ai:
                     continue
-                score = ai.get("importance_score", 0)
-                tier = ai.get("importance", "Medium")
-                note = format_clinical_note(ai.get("ai_clinical_note", ""), tier, "", score, False)
+                note = format_clinical_note(
+                    ai.get("ai_clinical_note", ""),
+                    ai["importance"],
+                    ai["importance_score"],
+                    ai["critical_exception"],
+                    False,
+                )
                 row_i = t["rowIndex"]
                 batch_updates.append(
                     {
@@ -1947,7 +2551,7 @@ def mode_resummarize_all(force: bool = False) -> None:
                         "values": [[
                             ai.get("title_ko") or t["title"],
                             ai.get("topic_category") or "국내 긴급경보(KDCA)",
-                            tier,
+                            ai["importance"],
                             ai.get("fact_summary_ko") or t["rawText"],
                             note,
                         ]],
@@ -1955,12 +2559,14 @@ def mode_resummarize_all(force: bool = False) -> None:
                 )
                 batch_updates.append(
                     {
-                        "range": f"R{row_i}:U{row_i}",
+                        "range": f"R{row_i}:W{row_i}",
                         "values": [[
                             f"{CODE_VERSION}|{used_model}",
                             ai.get("importance_reason", ""),
-                            score,
-                            ai.get("score_breakdown", ""),
+                            ai["importance_score"],
+                            ai["score_breakdown"],
+                            ai["critical_exception"],
+                            ai["exception_reason"],
                         ]],
                     }
                 )
@@ -1976,11 +2582,11 @@ def mode_resummarize_all(force: bool = False) -> None:
     total_updated = updated_deep + updated_ob
     total_targets = len(deep_targets) + len(outbreak_targets)
     note = (
-        f"전체 재요약({CODE_VERSION}) 완료: 논문·가이드라인 {updated_deep}/{len(deep_targets)}, "
-        f"경보 {updated_ob}/{len(outbreak_targets)}"
+        f"재요약({CODE_VERSION}) 완료: 논문·지침 {updated_deep}/{len(deep_targets)}(Pass2:{pass2_hits}), "
+        f"경보 {updated_ob}/{len(outbreak_targets)} | 상반기가드 제외:{h1_skipped}건"
     )
     if fallback_hits > 0:
-        note += f" (503 우회 {fallback_hits}건)"
+        note += f" (503우회:{fallback_hits}건)"
     if errors:
         note += " / 오류: " + " | ".join(errors[:3])
     status = "Success" if not errors else ("Partial" if total_updated > 0 else "Fail")
@@ -2004,6 +2610,7 @@ def mode_build_from_csv(csv_dir: Path) -> None:
     cfg_map = {safe_str(r.get("key")): safe_str(r.get("value")) for r in cfg_rows if safe_str(r.get("key"))}
     cfg_map.setdefault("gemini_model_fallback", "gemini-3.6-flash")
     cfg_map["gemini_thinking_level_deep"] = "low"
+    cfg_map["gemini_thinking_level_pass2"] = "high"
     cfg_map.setdefault("cutoff_must_read", "85")
     cfg_map.setdefault("cutoff_high", "70")
     cfg_map.setdefault("cutoff_medium", "45")
@@ -2011,29 +2618,32 @@ def mode_build_from_csv(csv_dir: Path) -> None:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="임상미생물 주간 브리핑 파이프라인 v8.1")
+    parser = argparse.ArgumentParser(description="임상미생물 주간 브리핑 파이프라인 v8.2")
     parser.add_argument(
         "--mode",
-        choices=["collect", "resummarize_all", "reclassify_only", "sync_sheet_only", "test_apis", "build_from_csv"],
+        choices=["pilot_20", "collect", "resummarize_all", "reclassify_only", "sync_sheet_only", "test_apis", "build_from_csv"],
         default="collect",
     )
-    parser.add_argument("--force", action="store_true", help="이미 v8.1 완료된 항목도 강제 재요약")
+    parser.add_argument("--allow-h1", action="store_true", help="2026년 상반기(1~6월) 소급 가드 해제")
+    parser.add_argument("--force", action="store_true", help="이미 v8.2 완료된 항목도 강제 재요약")
     parser.add_argument("--csv-dir", default=".", help="build_from_csv 모드에서 CSV가 있는 폴더")
     args = parser.parse_args()
 
     if args.mode == "build_from_csv":
         mode_build_from_csv(Path(args.csv_dir))
     elif args.mode == "test_apis":
-        mode_test_apis()
+        mode_test_apis(allow_h1=args.allow_h1)
+    elif args.mode == "pilot_20":
+        mode_pilot_20()
     elif args.mode == "reclassify_only":
         mode_reclassify_only()
     elif args.mode == "sync_sheet_only":
         ss = connect_spreadsheet()
         sync_sheet_to_dashboard_json(ss)
     elif args.mode == "resummarize_all":
-        mode_resummarize_all(force=args.force)
+        mode_resummarize_all(force=args.force, allow_h1=args.allow_h1)
     else:
-        mode_collect()
+        mode_collect(allow_h1=args.allow_h1)
 
 
 if __name__ == "__main__":

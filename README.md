@@ -1,15 +1,19 @@
-# 임상미생물 주간 브리핑 대시보드 (v8.1)
+# 임상미생물 주간 브리핑 대시보드 (v8.2)
 
-Google Sheets(원본 DB) + GitHub Actions(자동 수집·2-Tier Gemini 정밀 채점·503 자동 우회) + GitHub Pages(초고속 4탭 대시보드) 아키텍처입니다.
+Google Sheets(원본 DB) + GitHub Actions(Python v8.2 2-Pass 채점·요약 엔진) + **GitHub Pages(0.3초 고속 5탭 메인 대시보드)** 단일화 아키텍처입니다.
 
-## v8.1 주요 업그레이드
-- **503 과부하·타임아웃 자동 우회(Fallback):** 논문·가이드라인 배치를 2건 단위로 안정화하고, `gemini-4-hydrogen` 혼잡 시 자동으로 동급 안정 모델(`gemini-3.6-flash`)로 우회하여 끊김 없이 완료합니다.
-- **4단계 등급 + 100점 정량 채점:** AI가 4개 항목(실무 변경력·근거 강도·국내 적용성·혁신성, 각 25점)을 채점하면 코드가 합계 점수로 `필독(Must-Read)` / `주목(High)` / `참고(Medium)` / `단신(Low)`을 기계적으로 판정합니다.
-- **2026년 1월 전체 확대:** 4대 저널(JCM·CMI·CID·ACM), 가이드라인, KDCA 전수·긴급·**표본감시 주간소식지(1주차부터 다중 페이지 소급)**, WHO DONs를 모두 2026-01-01부터 통합 수집합니다.
+## v8.2 핵심 업그레이드
+- **100점 고정 앵커 루브릭 (35 / 30 / 20 / 15):** 실무·검사실 변경력(35/26/16/6), 근거 강도(30/22/13/5), 국내 적용성(20/14/8/3), 신규성·파급력(15/11/6/2) 완전 고정 앵커 채점.
+- **논문 유형별 상한선(Cap):** 단일기관 소규모·후향(82), 서술형 리뷰(78), 증례·Letter·Editorial(69), 순수 기초연구(65). 원점수와 Cap 이력을 투명 보존.
+- **Critical Exception (E1~E4):** 필수 3조건 모두 충족 시 점수와 별도로 예외 필독 판정(원점수·Cap 보존) 및 2-Pass 심층 요약 강제 적용.
+- **2-Pass 차등 요약 (안 B):** 1단계 전수 `gemini-4-hydrogen (thinking: low)` → 2단계 `Must-Read(85+)` 및 `Critical Exception` 전용 `gemini-4-hydrogen (thinking: high)` (503 폴백: `gemini-3.6-flash`).
+- **상반기 소급 가드 (기본 활성):** `allow_h1_backfill=false` 기본 설정으로 2026-07-01 이후 하반기 논문에 집중하여 무료 크레딧을 보호.
+- **GitHub Pages 5탭 단일화:** 주간 TOP 5에서 **Critical Exception 우선 노출 → 잔여 슬롯 점수순 노출**, 5번째 탭 `검사장비·시약` 플레이스홀더 추가.
 
-## 수동 실행 방법 (GitHub Actions)
-- `collect`: 2026년 1월 이후 미수집 논문·가이드라인·표본감시·전수감시·WHO 일괄 수집 및 대시보드 갱신
-- `resummarize_all`: 기존 데이터를 v8.1 4단계 + 100점 정량 채점 기준으로 일괄 재요약
-- `reclassify_only`: 시트 `config`의 점수 컷오프(`cutoff_must_read` 등) 변경 시 **AI 비용 0원**으로 전체 등급 재계산
-- `sync_sheet_only`: 구글 시트 수정분(`hai_stats` 월별 통계 등)만 대시보드에 즉시 반영 (**AI 비용 0원**)
-- `test_apis`: API 키 및 Gemini 3개 모델(상위·우회·경량) 연결 진단
+## GitHub Actions 실행 모드
+- `pilot_20`: 본 DB(`items`) 보호 — 2026-07 이후 층화 표본 20편을 별도 시트 탭(`pilot_v82`)에 검증 출력
+- `collect`: 하반기 가드 적용 수집 및 대시보드 갱신 (`allow_h1_backfill` 체크 시 상반기 소급 해제)
+- `resummarize_all`: 하반기(7월~) 기존 데이터를 v8.2 2-Pass 기준으로 일괄 정비
+- `reclassify_only`: 시트 `config` 컷오프 변경 시 AI 비용 0원으로 등급 재계산
+- `sync_sheet_only`: 시트 수정분(`hai_stats` 등)만 대시보드에 즉시 반영 (AI 비용 0원)
+- `test_apis`: Google Sheets · Gemini 3개 모델 · NCBI · KDCA 연결 진단
