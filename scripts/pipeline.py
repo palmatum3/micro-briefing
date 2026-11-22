@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-임상미생물 주간 브리핑 자동 수집 · 2-Pass 차등 정밀 요약 · 100점 고정 앵커 루브릭 엔진 (v8.2)
+임상미생물 주간 브리핑 자동 수집 · 2-Pass 차등 정밀 요약 · 100점 고정 앵커 루브릭 엔진 (v8.2.1)
 - Google Sheets(원본 DB) + GitHub Actions(무제한 수집·요약) + GitHub Pages(0.3초 고속 5탭 메인 대시보드)
 - v8.2 핵심 업그레이드:
   1) 100점 완전 고정 앵커 루브릭 (35 / 30 / 20 / 15 가중치):
@@ -31,7 +31,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 import requests
 
-CODE_VERSION = "v8.2"
+CODE_VERSION = "v8.2.1"
 KST = datetime.timezone(datetime.timedelta(hours=9))
 
 SHEET_ITEMS = "items"
@@ -116,7 +116,7 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 OUTPUT_JSON_PATH = ROOT_DIR / "docs" / "data" / "dashboard.json"
 
 HTTP = requests.Session()
-HTTP.headers.update({"User-Agent": "ClinicalMicroBriefing/8.2 (Academic Surveillance Bot)"})
+HTTP.headers.update({"User-Agent": "ClinicalMicroBriefing/8.2.1 (Academic Surveillance Bot)"})
 
 
 def now_kst() -> datetime.datetime:
@@ -381,6 +381,184 @@ def resolve_effective_paper_start(cfg: Dict[str, str], allow_h1: bool) -> Tuple[
     if not h1_unlocked and cfg_start < H2_GUARD_START_DATE:
         return H2_GUARD_START_DATE, True
     return cfg_start, False
+
+
+# =====================================================================
+# 3-Stage Cross-Journal Co-Publication Duplicate Prevention (v8.2.1)
+# =====================================================================
+TITLE_DEDUP_STOPWORDS = {
+    "a", "an", "the", "of", "in", "on", "for", "and", "or", "to", "with", "from", "by", "at", "as",
+    "study", "clinical", "patients", "adults", "children", "using", "among", "between", "against",
+    "during", "after", "associated", "infection", "infections", "disease", "diseases", "update",
+}
+
+
+def normalize_doi(doi: Any) -> str:
+    s = safe_str(doi).lower()
+    s = re.sub(r"^https?://(?:dx\.)?doi\.org/", "", s)
+    return s.strip().rstrip(".")
+
+
+def _title_tokens(title: str) -> Set[str]:
+    words = re.findall(r"[a-z0-9]{3,}", str(title or "").lower())
+    return {w for w in words if w not in TITLE_DEDUP_STOPWORDS}
+
+
+def _abstract_words(text: str) -> List[str]:
+    clean = re.sub(r"\b(?:background|methods?|results?|conclusions?|objectives?|aims?|introduction|summary)\s*:", " ", str(text or "").lower())
+    return re.findall(r"[a-z0-9]{2,}", clean)
+
+
+def compute_abstract_similarity(abs_a: str, abs_b: str) -> Tuple[float, float]:
+    """두 영문 초록 간 (단어 Jaccard, 3-gram 슁글 Jaccard) 반환"""
+    wa = _abstract_words(abs_a)
+    wb = _abstract_words(abs_b)
+    if len(wa) < 25 or len(wb) < 25:
+        return 0.0, 0.0
+    set_a, set_b = set(wa), set(wb)
+    word_jacc = len(set_a & set_b) / len(set_a | set_b) if (set_a | set_b) else 0.0
+
+    sh_a = set(zip(wa, wa[1:], wa[2:]))
+    sh_b = set(zip(wb, wb[1:], wb[2:]))
+    shingle_jacc = len(sh_a & sh_b) / len(sh_a | sh_b) if (sh_a | sh_b) else 0.0
+    return word_jacc, shingle_jacc
+
+
+def is_copublication_abstract_match(abs_a: str, abs_b: str) -> bool:
+    """서로 다른 저널 간 동시 게재 판정 (단어 유사도 >= 0.70 또는 3-gram 유사도 >= 0.55)"""
+    word_jacc, shingle_jacc = compute_abstract_similarity(abs_a, abs_b)
+    return word_jacc >= 0.70 or shingle_jacc >= 0.55
+
+
+def _title_cross_suspect(title_a: str, title_b: str) -> bool:
+    """서로 다른 저널 간 초록 비교 대상(동시 게재 의심 쌍)을 포착하는 1차 필터"""
+    ta = _title_tokens(title_a)
+    tb = _title_tokens(title_b)
+    if len(ta) < 3 or len(tb) < 3:
+        return False
+    inter = len(ta & tb)
+    if inter < 3:
+        return False
+    jacc = inter / len(ta | tb)
+    overlap = inter / min(len(ta), len(tb))
+    return jacc >= 0.30 or (overlap >= 0.50 and inter >= 4)
+
+
+def detect_cross_journal_duplicates(
+    candidates: List[Dict[str, Any]],
+    existing_records: List[Dict[str, Any]],
+    ncbi_api_key: str,
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """
+    신규 수집 후보군(candidates)에서 이종 저널 동시 게재 중복을 탐지하여
+    (정상 요약 대상 리스트, 0원 duplicate 마킹 대상 리스트)로 분리 반환.
+    - 가이드라인(guideline)이 일반 저널(paper)보다 우선 보존되도록 정렬 후 판정.
+    """
+    active_existing = [
+        r for r in existing_records
+        if r.get("contentType") in ("paper", "guideline") and r.get("uid")
+    ]
+    existing_dois = {normalize_doi(r.get("doi")): r["uid"] for r in existing_records if normalize_doi(r.get("doi"))}
+    existing_pmids = {clean_pmid(r.get("pmid")): r["uid"] for r in existing_records if clean_pmid(r.get("pmid"))}
+
+    suspect_existing_by_cand: Dict[str, List[Dict[str, Any]]] = {}
+    suspect_pmids: Set[str] = set()
+    suspect_dois: Set[str] = set()
+
+    for c in candidates:
+        if c.get("contentType") not in ("paper", "guideline"):
+            continue
+        if len(safe_str(c.get("rawText"))) < 120:
+            continue
+        c_src = safe_str(c.get("source")).upper()
+        c_date = parse_flexible_date(c.get("pubDate"))
+        matches = []
+        for ex in active_existing:
+            if safe_str(ex.get("source")).upper() == c_src:
+                continue
+            ex_date = parse_flexible_date(ex.get("pubDate"))
+            if c_date and ex_date and abs((c_date - ex_date).days) > 365:
+                continue
+            if _title_cross_suspect(c.get("title", ""), ex.get("title", "")):
+                matches.append(ex)
+                if ex.get("pmid"):
+                    suspect_pmids.add(ex["pmid"])
+                elif ex.get("doi"):
+                    suspect_dois.add(ex["doi"])
+        if matches:
+            suspect_existing_by_cand[c["uid"]] = matches
+
+    ex_abs_by_pmid: Dict[str, str] = {}
+    if suspect_pmids:
+        try:
+            print(f"  [중복 검증] 이종 저널 의심 기존 항목 {len(suspect_pmids)}건 원문 초록 대조 조회...")
+            for art in fetch_pubmed_articles(sorted(suspect_pmids), ncbi_api_key):
+                ex_abs_by_pmid[str(art["pmid"])] = art.get("abstractText", "")
+        except Exception as e:
+            print(f"  [중복 검증 경고] PubMed 대조 초록 조회 실패(무시 후 진행): {e}")
+
+    ex_abs_by_doi: Dict[str, str] = {}
+    for d in sorted(suspect_dois):
+        ex_abs_by_doi[d] = fetch_crossref_abstract(d)
+        time.sleep(0.15)
+
+    ordered = sorted(
+        candidates,
+        key=lambda x: (0 if x.get("contentType") == "guideline" else (1 if x.get("contentType") == "outbreak" else 2)),
+    )
+
+    clean_list: List[Dict[str, Any]] = []
+    dup_list: List[Dict[str, Any]] = []
+    accepted_deep: List[Dict[str, Any]] = []
+    accepted_dois: Dict[str, str] = dict(existing_dois)
+    accepted_pmids: Dict[str, str] = dict(existing_pmids)
+
+    for c in ordered:
+        if c.get("contentType") == "outbreak":
+            clean_list.append(c)
+            continue
+
+        c_pmid = clean_pmid(c.get("pmid"))
+        c_doi = normalize_doi(c.get("doi"))
+        dup_of = ""
+
+        if c_pmid and c_pmid in accepted_pmids:
+            dup_of = accepted_pmids[c_pmid]
+        elif c_doi and c_doi in accepted_dois:
+            dup_of = accepted_dois[c_doi]
+
+        c_abs = safe_str(c.get("rawText"))
+        if not dup_of and c_abs and c["uid"] in suspect_existing_by_cand:
+            for ex in suspect_existing_by_cand[c["uid"]]:
+                ex_abs = ex_abs_by_pmid.get(ex.get("pmid", ""), "") or ex_abs_by_doi.get(ex.get("doi", ""), "")
+                if ex_abs and is_copublication_abstract_match(c_abs, ex_abs):
+                    dup_of = ex["uid"]
+                    break
+
+        if not dup_of and len(c_abs) >= 120:
+            c_src = safe_str(c.get("source")).upper()
+            for prev in accepted_deep:
+                if safe_str(prev.get("source")).upper() == c_src:
+                    continue
+                prev_abs = safe_str(prev.get("rawText"))
+                if len(prev_abs) >= 120 and is_copublication_abstract_match(c_abs, prev_abs):
+                    dup_of = prev["uid"]
+                    break
+
+        if dup_of:
+            c_copy = dict(c)
+            c_copy["duplicateOf"] = dup_of
+            dup_list.append(c_copy)
+            print(f"  [동시 게재 자동 차단 (0원)] {c['uid']} ({c['source']}) == {dup_of}")
+        else:
+            clean_list.append(c)
+            accepted_deep.append(c)
+            if c_pmid:
+                accepted_pmids[c_pmid] = c["uid"]
+            if c_doi:
+                accepted_dois[c_doi] = c["uid"]
+
+    return clean_list, dup_list
 
 
 # =====================================================================
@@ -1675,6 +1853,8 @@ def write_dashboard_json(
         title_orig = safe_str(r.get("title_orig"))
         title_ko = safe_str(r.get("title_ko")) or title_orig
         ctype = safe_str(r.get("content_type")) or "paper"
+        if ctype == "duplicate":
+            continue
         week_key = safe_str(r.get("week_key")) or get_iso_week_key(pub_date)
         raw_score = safe_float(r.get("importance_score"))
         score_val = int(round(raw_score)) if raw_score is not None else None
@@ -2068,6 +2248,8 @@ def mode_reclassify_only() -> None:
     scored = 0
     for idx, row in enumerate(all_values[1:], start=2):
         r = row + [""] * max(0, 23 - len(row))
+        if r[15].strip() == "duplicate":
+            continue
         sc = safe_float(r[19])
         if sc is None:
             continue
@@ -2118,7 +2300,26 @@ def mode_collect(allow_h1: bool = False) -> None:
     cutoffs = get_score_cutoffs(cfg)
     pubmed_delay = 0.15 if ncbi_key else 0.4
 
-    existing_uids = {v.strip() for v in item_ws.col_values(1)[1:] if v.strip()}
+    all_existing_vals = item_ws.get_all_values()
+    existing_uids: Set[str] = set()
+    existing_records: List[Dict[str, Any]] = []
+    for row in all_existing_vals[1:]:
+        r = row + [""] * max(0, 23 - len(row))
+        u = r[0].strip()
+        if not u:
+            continue
+        existing_uids.add(u)
+        existing_records.append(
+            {
+                "uid": u,
+                "source": r[1].strip(),
+                "pubDate": r[2].strip()[:10],
+                "title": r[4].strip(),
+                "pmid": clean_pmid(r[10]),
+                "doi": r[11].strip(),
+                "contentType": r[15].strip() or "paper",
+            }
+        )
     candidates: List[Dict[str, Any]] = []
     fetch_errors: List[str] = []
     status_notes: List[str] = []
@@ -2259,7 +2460,45 @@ def mode_collect(allow_h1: bool = False) -> None:
         except Exception as e:
             fetch_errors.append(f"ACM: {e}")
 
-    print(f"[수집 대상 확정] 논문 시작일:{paper_start} / 조회 {total_fetched}건 / 중복 {total_dup}건 / 신규 요약 대상 {len(candidates)}건")
+    candidates, copub_dups = detect_cross_journal_duplicates(candidates, existing_records, ncbi_key)
+    copub_dup_count = len(copub_dups)
+    if copub_dups:
+        dup_rows = []
+        for it in copub_dups:
+            week_key = get_iso_week_key(it["pubDate"] or today_str)
+            dup_of = it.get("duplicateOf", "")
+            dup_rows.append(
+                [
+                    it["uid"],
+                    it["source"],
+                    it["pubDate"],
+                    now_str,
+                    it["title"],
+                    it["title"],
+                    "기타",
+                    "Low",
+                    f"이종 저널 동시 게재 중복 항목 (원본: {dup_of})",
+                    "",
+                    it.get("pmid", ""),
+                    it.get("doi", ""),
+                    it.get("sourceUrl", ""),
+                    it.get("accessStatus", "Public"),
+                    False,
+                    "duplicate",
+                    week_key,
+                    f"{CODE_VERSION}|duplicate_of:{dup_of}",
+                    f"이종 저널 초록 지문 일치로 자동 비노출 마킹 (원본: {dup_of})",
+                    "",
+                    "",
+                    "",
+                    "",
+                ]
+            )
+        item_ws.append_rows(dup_rows, value_input_option="RAW")
+        total_dup += copub_dup_count
+        status_notes.append(f"동시게재 중복 자동차단 {copub_dup_count}건(0원)")
+
+    print(f"[수집 대상 확정] 논문 시작일:{paper_start} / 조회 {total_fetched}건 / 중복 {total_dup}건(동시게재 {copub_dup_count}건 포함) / 신규 요약 대상 {len(candidates)}건")
 
     outbreak_q = [x for x in candidates if x["contentType"] == "outbreak"]
     deep_q = [x for x in candidates if x["contentType"] != "outbreak"]
@@ -2427,7 +2666,9 @@ def mode_resummarize_all(force: bool = False, allow_h1: bool = False) -> None:
         pub_date = r[2].strip()[:10]
         ctype = r[15].strip() or "paper"
         meta = r[17].strip()
-        if (not force) and meta.startswith(f"{CODE_VERSION}|"):
+        if ctype == "duplicate":
+            continue
+        if (not force) and (meta.startswith(f"{CODE_VERSION}|") or meta.startswith("v8.2|")):
             continue
         # 상반기 소급 가드: allow_h1=False일 때 2026-07-01 이전 논문은 익월 크레딧 단계로 보류
         if guard_active and ctype == "paper" and pub_date and pub_date < H2_GUARD_START_DATE:
@@ -2618,7 +2859,7 @@ def mode_build_from_csv(csv_dir: Path) -> None:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="임상미생물 주간 브리핑 파이프라인 v8.2")
+    parser = argparse.ArgumentParser(description="임상미생물 주간 브리핑 파이프라인 v8.2.1")
     parser.add_argument(
         "--mode",
         choices=["pilot_20", "collect", "resummarize_all", "reclassify_only", "sync_sheet_only", "test_apis", "build_from_csv"],
