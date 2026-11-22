@@ -1,4 +1,4 @@
-name: 임상미생물 브리핑 자동화 (v8.0)
+name: 임상미생물 브리핑 자동화 (v8.2)
 
 on:
   schedule:
@@ -9,15 +9,22 @@ on:
       mode:
         description: '실행할 작업을 선택하세요'
         required: true
-        default: 'collect'
+        default: 'pilot_20'
         type: choice
         options:
+          - pilot_20
           - collect
           - resummarize_all
+          - reclassify_only
           - sync_sheet_only
           - test_apis
+      allow_h1_backfill:
+        description: '2026년 상반기(1~6월) 소급 가드 해제 (체크 해제 시 2026-07-01 이후만 처리)'
+        required: false
+        default: false
+        type: boolean
       force_resummarize:
-        description: 'resummarize_all 실행 시 이미 완료된 항목도 처음부터 다시 요약할까요?'
+        description: 'resummarize_all 실행 시 이미 v8.2 완료된 항목도 처음부터 다시 요약할까요?'
         required: false
         default: false
         type: boolean
@@ -42,7 +49,7 @@ jobs:
       - name: 필수 패키지 설치
         run: pip install -r requirements.txt
 
-      - name: 임상미생물 수집·요약·대시보드 데이터 빌드 실행
+      - name: 임상미생물 v8.2 파이프라인 실행
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           KDCA_API_KEY: ${{ secrets.KDCA_API_KEY }}
@@ -51,11 +58,14 @@ jobs:
           SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
         run: |
           MODE="${{ github.event.inputs.mode || 'collect' }}"
-          FORCE_FLAG=""
-          if [ "${{ github.event.inputs.force_resummarize }}" = "true" ]; then
-            FORCE_FLAG="--force"
+          EXTRA_FLAGS=""
+          if [ "${{ github.event.inputs.allow_h1_backfill }}" = "true" ]; then
+            EXTRA_FLAGS="$EXTRA_FLAGS --allow-h1"
           fi
-          python scripts/pipeline.py --mode "$MODE" $FORCE_FLAG
+          if [ "${{ github.event.inputs.force_resummarize }}" = "true" ]; then
+            EXTRA_FLAGS="$EXTRA_FLAGS --force"
+          fi
+          python scripts/pipeline.py --mode "$MODE" $EXTRA_FLAGS
 
       - name: 최신 대시보드 데이터(docs/data/dashboard.json) 자동 반영
         run: |
@@ -65,6 +75,6 @@ jobs:
           if git diff --staged --quiet; then
             echo "대시보드 데이터 변경 사항 없음"
           else
-            git commit -m "chore: update clinical microbiology dashboard data ($(date -u +'%Y-%m-%d %H:%M UTC'))"
+            git commit -m "chore: update clinical microbiology dashboard v8.2 ($(date -u +'%Y-%m-%d %H:%M UTC'))"
             git push
           fi
