@@ -32,7 +32,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 import requests
 
-CODE_VERSION = "v8.3.3"
+CODE_VERSION = "v8.3.4"
 KST = datetime.timezone(datetime.timedelta(hours=9))
 
 SHEET_ITEMS = "items"
@@ -98,53 +98,58 @@ PUBMED_GENERAL_JOURNAL_CLEAN = (
     + ' NOT "Perspective"[Title] NOT "World Report"[Title] NOT "Medical News"[Title]'
 )
 
-# 종합 의학 저널(NEJM·JAMA·Lancet)용 임상미생물·감염병 0원 사전 필터 (MeSH + Title/Abstract 병행: 최신 미색인 논문 누락 방지)
+# 종합 의학 저널(NEJM·JAMA·Lancet)용 정밀 조임 0원 사전 필터 (v8.3.4)
+# - MeSH는 주주제어([MeSH Major Topic])만 허용해 타과 논문 부차 태그 유입 차단
+# - pneumonia·sepsis·vaccine·HIV·간염 등 타과 초록에 흔한 넓은 단어는 [Title]로 한정
+# - 내성균·임상미생물 고유 핵심어는 [Title/Abstract] 유지해 최신 미색인 핵심 논문 누락 방지
 PUBMED_ID_MICRO_TOPIC_FILTER = (
     ' AND ('
-    '"Communicable Diseases"[MeSH Terms] OR "Bacterial Infections and Mycoses"[MeSH Terms]'
-    ' OR "Virus Diseases"[MeSH Terms] OR "Parasitic Diseases"[MeSH Terms]'
-    ' OR "Anti-Infective Agents"[MeSH Terms] OR "Drug Resistance, Microbial"[MeSH Terms]'
-    ' OR "Microbiological Techniques"[MeSH Terms] OR "Sepsis"[MeSH Terms]'
-    ' OR "antimicrobial"[Title/Abstract] OR "antibiotic"[Title/Abstract]'
+    '"Communicable Diseases"[MeSH Major Topic] OR "Bacterial Infections and Mycoses"[MeSH Major Topic]'
+    ' OR "Virus Diseases"[MeSH Major Topic] OR "Parasitic Diseases"[MeSH Major Topic]'
+    ' OR "Anti-Infective Agents"[MeSH Major Topic] OR "Drug Resistance, Microbial"[MeSH Major Topic]'
+    ' OR "Microbiological Techniques"[MeSH Major Topic] OR "Sepsis"[MeSH Major Topic]'
+    ' OR "sepsis"[Title] OR "septic shock"[Title] OR "pneumonia"[Title]'
+    ' OR "endocarditis"[Title] OR "meningitis"[Title] OR "tuberculosis"[Title]'
+    ' OR "antimicrobial"[Title] OR "antibiotic*"[Title] OR "vaccine*"[Title] OR "vaccination"[Title]'
+    ' OR "influenza"[Title] OR "SARS-CoV-2"[Title] OR "COVID-19"[Title]'
+    ' OR "respiratory syncytial virus"[Title] OR "RSV"[Title]'
+    ' OR "HIV"[Title] OR "hepatitis B"[Title] OR "hepatitis C"[Title]'
+    ' OR "malaria"[Title] OR "mpox"[Title] OR "dengue"[Title]'
+    ' OR "syphilis"[Title] OR "gonorrhoeae"[Title]'
+    ' OR "infectious disease*"[Title] OR "pathogen*"[Title] OR "fungal"[Title]'
+    ' OR "Candida"[Title] OR "Enterococcus"[Title] OR "Staphylococcus"[Title]'
+    ' OR "Pseudomonas"[Title] OR "Acinetobacter"[Title]'
+    ' OR "antimicrobial resistance"[Title/Abstract] OR "antibiotic resistance"[Title/Abstract]'
+    ' OR "carbapenem*"[Title/Abstract] OR "beta-lactamase"[Title/Abstract]'
+    ' OR "MRSA"[Title/Abstract] OR "VRE"[Title/Abstract] OR "CRE"[Title/Abstract]'
+    ' OR "bacteremia"[Title/Abstract] OR "bloodstream infection*"[Title/Abstract]'
     ' OR "antifungal"[Title/Abstract] OR "antiviral"[Title/Abstract]'
-    ' OR "carbapenem"[Title/Abstract] OR "bacteremia"[Title/Abstract]'
-    ' OR "bloodstream infection"[Title/Abstract] OR "sepsis"[Title/Abstract]'
-    ' OR "endocarditis"[Title/Abstract] OR "meningitis"[Title/Abstract]'
-    ' OR "pneumonia"[Title/Abstract] OR "tuberculosis"[Title/Abstract]'
-    ' OR "mycobacteri*"[Title/Abstract] OR "influenza"[Title/Abstract]'
-    ' OR "SARS-CoV-2"[Title/Abstract] OR "COVID-19"[Title/Abstract]'
-    ' OR "respiratory syncytial virus"[Title/Abstract] OR "RSV"[Title/Abstract]'
-    ' OR "Candida"[Title/Abstract] OR "Aspergillus"[Title/Abstract]'
-    ' OR "Staphylococcus"[Title/Abstract] OR "Enterobacterales"[Title/Abstract]'
-    ' OR "Enterococcus"[Title/Abstract] OR "Pseudomonas"[Title/Abstract]'
-    ' OR "Acinetobacter"[Title/Abstract] OR "Clostridioides"[Title/Abstract]'
-    ' OR "HIV"[Title/Abstract] OR "hepatitis B"[Title/Abstract] OR "hepatitis C"[Title/Abstract]'
-    ' OR "malaria"[Title/Abstract] OR "mpox"[Title/Abstract] OR "dengue"[Title/Abstract]'
-    ' OR "syphilis"[Title/Abstract] OR "gonorrhoeae"[Title/Abstract] OR "vaccine"[Title/Abstract]'
-    ' OR "infectious disease*"[Title/Abstract] OR "pathogen*"[Title/Abstract]'
+    ' OR "Candida auris"[Title/Abstract] OR "Aspergillus"[Title/Abstract]'
+    ' OR "Staphylococcus aureus"[Title/Abstract] OR "Enterobacterales"[Title/Abstract]'
+    ' OR "Pseudomonas aeruginosa"[Title/Abstract] OR "Acinetobacter baumannii"[Title/Abstract]'
+    ' OR "Clostridioides difficile"[Title/Abstract] OR "mycobacteri*"[Title/Abstract]'
+    ' OR "blood culture"[Title/Abstract] OR "MALDI-TOF"[Title/Abstract] OR "bacteriophage"[Title/Abstract]'
     ')'
 )
 
-# ALM (Annals of Laboratory Medicine)용 임상미생물·감염분자진단·감염면역 특화 필터
+# ALM (Annals of Laboratory Medicine)용 임상미생물·감염분자진단·감염면역 정밀 필터 (v8.3.4)
 PUBMED_ALM_MICRO_FILTER = (
     ' AND ('
-    '"Microbiology"[MeSH Terms] OR "Microbiological Techniques"[MeSH Terms]'
-    ' OR "Bacterial Infections and Mycoses"[MeSH Terms] OR "Virus Diseases"[MeSH Terms]'
-    ' OR "Drug Resistance, Microbial"[MeSH Terms]'
+    '"Microbiology"[MeSH Major Topic] OR "Microbiological Techniques"[MeSH Major Topic]'
+    ' OR "Bacterial Infections and Mycoses"[MeSH Major Topic] OR "Virus Diseases"[MeSH Major Topic]'
+    ' OR "Drug Resistance, Microbial"[MeSH Major Topic]'
     ' OR "microbiolog*"[Title/Abstract] OR "antimicrobial"[Title/Abstract] OR "antibiotic"[Title/Abstract]'
     ' OR "carbapenem*"[Title/Abstract] OR "beta-lactamase"[Title/Abstract] OR "ESBL"[Title/Abstract]'
     ' OR "MRSA"[Title/Abstract] OR "VRE"[Title/Abstract] OR "CRE"[Title/Abstract]'
-    ' OR "MALDI-TOF"[Title/Abstract] OR "blood culture"[Title/Abstract] OR "sepsis"[Title/Abstract]'
-    ' OR "bacteremia"[Title/Abstract] OR "bacteriophage"[Title/Abstract]'
-    ' OR "tuberculosis"[Title/Abstract] OR "mycobacteri*"[Title/Abstract]'
+    ' OR "MALDI-TOF"[Title/Abstract] OR "blood culture"[Title/Abstract] OR "bacteremia"[Title/Abstract]'
+    ' OR "bacteriophage"[Title/Abstract] OR "tuberculosis"[Title/Abstract] OR "mycobacteri*"[Title/Abstract]'
     ' OR "fungal"[Title/Abstract] OR "Candida"[Title/Abstract] OR "Aspergillus"[Title/Abstract]'
-    ' OR "virus"[Title/Abstract] OR "viral"[Title/Abstract] OR "influenza"[Title/Abstract]'
-    ' OR "SARS-CoV-2"[Title/Abstract] OR "RSV"[Title/Abstract] OR "hepatitis"[Title/Abstract]'
-    ' OR "HIV"[Title/Abstract] OR "syphilis"[Title/Abstract] OR "parasit*"[Title/Abstract]'
     ' OR "Clostridioides"[Title/Abstract] OR "Enterobacterales"[Title/Abstract]'
     ' OR "Staphylococcus"[Title/Abstract] OR "Pseudomonas"[Title/Abstract] OR "Acinetobacter"[Title/Abstract]'
     ' OR "susceptibility testing"[Title/Abstract] OR "breakpoint*"[Title/Abstract]'
-    ' OR "infection"[Title/Abstract] OR "infectious"[Title/Abstract] OR "pathogen*"[Title/Abstract]'
+    ' OR "sepsis"[Title] OR "infection*"[Title] OR "infectious"[Title] OR "pathogen*"[Title]'
+    ' OR "virus"[Title] OR "viral"[Title] OR "influenza"[Title] OR "SARS-CoV-2"[Title]'
+    ' OR "RSV"[Title] OR "hepatitis"[Title] OR "HIV"[Title] OR "syphilis"[Title] OR "parasit*"[Title]'
     ')'
 )
 
@@ -174,9 +179,9 @@ NEW_JOURNALS_V83: List[Tuple[str, str, str, str]] = [
     ("CMR", "Clinical Microbiology Reviews", '"Clin Microbiol Rev"[Journal]' + PUBMED_CLEAN_FILTER, "전수 수집 · 리뷰Cap해제(옵션2)"),
     ("ALM", "Annals of Laboratory Medicine", '"Ann Lab Med"[Journal]' + PUBMED_ALM_MICRO_FILTER + PUBMED_CLEAN_FILTER, "미생물·감염면역 필터 · 리뷰Cap유지"),
     ("NRM", "Nature Reviews Microbiology", '"Nat Rev Microbiol"[Journal]' + PUBMED_NRM_CLINICAL_FILTER + PUBMED_CLEAN_FILTER, "임상·내성·진단 필터 · 리뷰Cap해제(옵션2)"),
-    ("NEJM", "New England Journal of Medicine", '"N Engl J Med"[Journal]' + PUBMED_ID_MICRO_TOPIC_FILTER + PUBMED_GENERAL_JOURNAL_CLEAN, "감염병·미생물 원저/리뷰 · 리뷰Cap해제(옵션2)"),
-    ("JAMA", "JAMA", '"JAMA"[Journal]' + PUBMED_ID_MICRO_TOPIC_FILTER + PUBMED_GENERAL_JOURNAL_CLEAN, "감염병·미생물 원저/리뷰 · 리뷰Cap해제(옵션2)"),
-    ("LANCET", "The Lancet", '"Lancet"[Journal]' + PUBMED_ID_MICRO_TOPIC_FILTER + PUBMED_GENERAL_JOURNAL_CLEAN, "감염병·미생물 원저/리뷰 · 리뷰Cap해제(옵션2)"),
+    ("NEJM", "New England Journal of Medicine", '"N Engl J Med"[Journal]' + PUBMED_ID_MICRO_TOPIC_FILTER + PUBMED_GENERAL_JOURNAL_CLEAN, "정밀필터(MeSH주주제·제목/고유균종) · 리뷰Cap해제(옵션2)"),
+    ("JAMA", "JAMA", '"JAMA"[Journal]' + PUBMED_ID_MICRO_TOPIC_FILTER + PUBMED_GENERAL_JOURNAL_CLEAN, "정밀필터(MeSH주주제·제목/고유균종) · 리뷰Cap해제(옵션2)"),
+    ("LANCET", "The Lancet", '"Lancet"[Journal]' + PUBMED_ID_MICRO_TOPIC_FILTER + PUBMED_GENERAL_JOURNAL_CLEAN, "정밀필터(MeSH주주제·제목/고유균종) · 리뷰Cap해제(옵션2)"),
     ("LANCET_ID", "The Lancet Infectious Diseases", '"Lancet Infect Dis"[Journal]' + PUBMED_GENERAL_JOURNAL_CLEAN, "원저/리뷰/지침 선별 · 리뷰Cap해제(옵션2)"),
 ]
 
@@ -228,7 +233,7 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 OUTPUT_JSON_PATH = ROOT_DIR / "docs" / "data" / "dashboard.json"
 
 HTTP = requests.Session()
-HTTP.headers.update({"User-Agent": "ClinicalMicroBriefing/8.3.3 (Academic Surveillance Bot)"})
+HTTP.headers.update({"User-Agent": "ClinicalMicroBriefing/8.3.4 (Academic Surveillance Bot)"})
 
 
 def now_kst() -> datetime.datetime:
