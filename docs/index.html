@@ -4,11 +4,11 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="robots" content="noindex, nofollow" />
-  <title>임상미생물 주간 브리핑 v8.3.2</title>
+  <title>임상미생물 주간 브리핑 v8.3.3</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
   <style>
     :root {
-      --bg: #f4f6f9;
+      --bg: #e8eef5;
       --surface: #ffffff;
       --surface-soft: #f8fafc;
       --border: #e2e8f0;
@@ -146,6 +146,139 @@
     .container { max-width: 1180px; margin: 18px auto 52px; padding: 0 16px; }
     .tab-pane { display: none; }
     .tab-pane.active { display: block; }
+
+    /* Distinct Color-Coded Sticky Section Boxes (Scroll Boundary Clarity) */
+    .jump-bar {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+      margin-bottom: 16px;
+      padding: 9px 12px;
+      background: #ffffff;
+      border: 1px solid #cbd5e1;
+      border-radius: 11px;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+    }
+    .jump-bar-label {
+      font-size: 0.76rem;
+      font-weight: 800;
+      color: var(--text-light);
+      margin-right: 4px;
+    }
+    .jump-chip {
+      border: 1.5px solid transparent;
+      border-radius: 999px;
+      padding: 5px 12px;
+      font-size: 0.8rem;
+      font-weight: 800;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: transform 0.12s, box-shadow 0.12s;
+    }
+    .jump-chip:hover { transform: translateY(-1px); box-shadow: 0 2px 6px rgba(15,23,42,0.1); }
+    .jump-chip.jc-a { background: #fff1f2; color: #be123c; border-color: #fda4af; }
+    .jump-chip.jc-b { background: #ecfdf5; color: #047857; border-color: #6ee7b7; }
+    .jump-chip.jc-c { background: #eff6ff; color: #1d4ed8; border-color: #93c5fd; }
+    .jump-cnt {
+      background: rgba(15, 23, 42, 0.1);
+      padding: 1px 7px;
+      border-radius: 999px;
+      font-size: 0.72rem;
+    }
+
+    .section-box {
+      background: var(--surface);
+      border: 1px solid #cbd5e1;
+      border-radius: 14px;
+      box-shadow: 0 4px 16px rgba(15, 23, 42, 0.07);
+      margin-bottom: 26px;
+      scroll-margin-top: 116px;
+      overflow: clip;
+    }
+    .section-box.sec-alert { border-top: 4px solid #e11d48; }
+    .section-box.sec-guide { border-top: 4px solid #059669; }
+    .section-box.sec-paper { border-top: 4px solid #2563eb; }
+    .section-box.sec-chart { border-top: 4px solid #7c3aed; }
+    .section-box.sec-list  { border-top: 4px solid #0284c7; }
+
+    .section-banner {
+      position: sticky;
+      top: var(--topbar-h, 96px);
+      z-index: 20;
+      padding: 12px 18px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      border-bottom: 1.5px solid var(--border);
+      backdrop-filter: blur(6px);
+    }
+    .sec-alert > .section-banner { background: rgba(255, 241, 242, 0.96); border-bottom-color: #fecdd3; }
+    .sec-guide > .section-banner { background: rgba(236, 253, 245, 0.96); border-bottom-color: #a7f3d0; }
+    .sec-paper > .section-banner { background: rgba(239, 246, 255, 0.96); border-bottom-color: #bfdbfe; }
+    .sec-chart > .section-banner { background: rgba(245, 243, 255, 0.96); border-bottom-color: #ddd6fe; }
+    .sec-list  > .section-banner { background: rgba(240, 249, 255, 0.96); border-bottom-color: #bae6fd; }
+
+    .sec-tag {
+      display: inline-flex;
+      align-items: center;
+      font-size: 0.73rem;
+      font-weight: 800;
+      padding: 3px 9px;
+      border-radius: 6px;
+      color: #ffffff;
+      letter-spacing: 0.02em;
+      white-space: nowrap;
+    }
+    .sec-alert .sec-tag { background: #e11d48; }
+    .sec-guide .sec-tag { background: #059669; }
+    .sec-paper .sec-tag { background: #2563eb; }
+    .sec-chart .sec-tag { background: #7c3aed; }
+    .sec-list  .sec-tag { background: #0284c7; }
+
+    .section-body {
+      padding: 15px 18px 18px;
+    }
+    .guide-release-row {
+      border: 1px solid #a7f3d0;
+      border-left: 4px solid #059669;
+      border-radius: 10px;
+      background: #f8fffc;
+      padding: 11px 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .guide-release-row.is-std {
+      border-color: #c4b5fd;
+      border-left-color: #7c3aed;
+      background: #faf8ff;
+    }
+    .guide-release-title {
+      font-size: 0.93rem;
+      font-weight: 800;
+      color: var(--text);
+      margin-top: 4px;
+    }
+    .empty-compact {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+      padding: 12px 14px;
+      background: var(--surface-soft);
+      border: 1px dashed #cbd5e1;
+      border-radius: 9px;
+      font-size: 0.84rem;
+      color: var(--text-muted);
+    }
 
     /* Cards & Panels */
     .card {
@@ -651,6 +784,8 @@
       .brand-title { font-size: 1.04rem; }
       .tab-btn { padding: 10px 10px; font-size: 0.83rem; }
       .card { padding: 13px 13px; }
+      .section-banner { padding: 10px 13px; }
+      .section-body { padding: 12px 12px 14px; }
       .acc-header { padding: 12px 12px; }
       .acc-date { margin-left: 0; width: 100%; }
       .toolbar > .select, .toolbar > .input-search { width: 100%; }
@@ -662,7 +797,7 @@
     <div class="topbar-inner">
       <div class="brand-row">
         <div>
-          <div class="brand-title">임상미생물 주간 브리핑 <span class="ver-pill">v8.3.2</span></div>
+          <div class="brand-title">임상미생물 주간 브리핑 <span class="ver-pill">v8.3.3</span></div>
           <div class="brand-sub" id="brandSub">GitHub Pages 메인 대시보드 · 데이터 불러오는 중...</div>
         </div>
         <div class="meta-actions">
@@ -685,7 +820,7 @@
   </header>
 
   <main class="container">
-    <!-- ==================== 탭 1: 주간 브리핑 (패널 A 삭제 · 패널 B 선택 주차 연동) ==================== -->
+    <!-- ==================== 탭 1: 주간 브리핑 (컬러 Sticky 섹션 A · B · C 완전 구분) ==================== -->
     <section id="tab-weekly" class="tab-pane active">
       <div class="toolbar">
         <button class="btn" id="btnPrevWeek" type="button">◀ 이전 주</button>
@@ -694,31 +829,45 @@
         <span class="section-sub" id="weekSummaryMeta"></span>
       </div>
 
-      <!-- 이상 급증 및 국내외 긴급 경보 (선택 주차 기준월 연동) -->
-      <div class="card">
-        <div class="section-head">
-          <h2 class="section-title">이상 급증 및 국내·해외 감염병 경보</h2>
+      <!-- 섹션 퀵 점프 바 -->
+      <div class="jump-bar">
+        <span class="jump-bar-label">바로 이동</span>
+        <button class="jump-chip jc-a" type="button" onclick="scrollToSection('secWeeklyAlerts')">A · 감염병 경보 <span class="jump-cnt" id="jCntA">0</span></button>
+        <button class="jump-chip jc-b" type="button" onclick="scrollToSection('secWeeklyGuides')">B · 지침·가이드라인 출간 <span class="jump-cnt" id="jCntB">0</span></button>
+        <button class="jump-chip jc-c" type="button" onclick="scrollToSection('secWeeklyTop5')">C · 필독 논문 TOP 5 <span class="jump-cnt" id="jCntC">0</span></button>
+      </div>
+
+      <!-- SECTION A: 이상 급증 및 국내외 긴급 경보 -->
+      <div class="section-box sec-alert" id="secWeeklyAlerts">
+        <div class="section-banner">
+          <h2 class="section-title"><span class="sec-tag">SECTION A</span> 이상 급증 및 국내·해외 감염병 경보</h2>
           <span class="section-sub" id="weeklyAlertSub">선택 주차 기준월 월간 전수감시 급증 + 해당 주차 KDCA·WHO 경보</span>
         </div>
-        <div id="weeklyAlertsBox" class="item-list"></div>
+        <div class="section-body">
+          <div id="weeklyAlertsBox" class="item-list"></div>
+        </div>
       </div>
 
-      <!-- 필독 논문 TOP 5 (Critical Exception 최우선 -> 잔여 슬롯 점수순) -->
-      <div class="card">
-        <div class="section-head">
-          <h2 class="section-title">해당 주차 필독 논문 TOP 5</h2>
+      <!-- SECTION B: 법정감염병 지침 · 학회·표준 가이드라인 출간 소식 (감염병 뒤 · 논문 TOP 5 앞) -->
+      <div class="section-box sec-guide" id="secWeeklyGuides">
+        <div class="section-banner">
+          <h2 class="section-title"><span class="sec-tag">SECTION B</span> 법정감염병 지침 · 가이드라인 출간 소식</h2>
+          <span class="section-sub" id="weeklyGuideSub">해당 주차 KDCA 법정감염병 지침 · IDSA/ESCMID · CLSI/EUCAST 신규 발간·개정</span>
+        </div>
+        <div class="section-body">
+          <div id="weeklyGuideBox" class="item-list"></div>
+        </div>
+      </div>
+
+      <!-- SECTION C: 필독 논문 TOP 5 -->
+      <div class="section-box sec-paper" id="secWeeklyTop5">
+        <div class="section-banner">
+          <h2 class="section-title"><span class="sec-tag">SECTION C</span> 해당 주차 필독 논문 TOP 5</h2>
           <span class="section-sub" id="top5Subtitle">Critical Exception 최우선 노출 → 점수 높은순 정렬 · 클릭 시 상세 펼침</span>
         </div>
-        <div id="weeklyTop5Box" class="item-list"></div>
-      </div>
-
-      <!-- 해당 주차 가이드라인 -->
-      <div class="card" id="weeklyGuideCard" style="display:none;">
-        <div class="section-head">
-          <h2 class="section-title">해당 주차 학회 가이드라인</h2>
-          <span class="section-sub">IDSA · ESCMID 공식 지침</span>
+        <div class="section-body">
+          <div id="weeklyTop5Box" class="item-list"></div>
         </div>
-        <div id="weeklyGuideBox" class="item-list"></div>
       </div>
     </section>
 
@@ -734,10 +883,10 @@
 
       <!-- 서브 뷰 1: 통합 감시 그래프 + 국내/해외 통합 경보 목록 -->
       <div id="outbreakChartsView">
-        <div class="card">
-          <div class="section-head">
+        <div class="section-box sec-chart">
+          <div class="section-banner">
             <div>
-              <h2 class="section-title">패널 A · 2026년 4급 HAI 5종 및 2급 CRE 통합 감시 그래프</h2>
+              <h2 class="section-title"><span class="sec-tag">패널 A</span> 2026년 4급 HAI 5종 및 2급 CRE 통합 감시 그래프</h2>
               <div class="section-sub" id="chartSubMeta">좌측 Y축: 4급 의료관련감염병 분리율(1,000재원일당) · 우측 Y축: 2급 CRE 월별 신고건수(보라색 점선)</div>
             </div>
             <div class="pill-group">
@@ -745,50 +894,54 @@
               <button class="pill-btn" id="btnHaiNonBlood" type="button">혈액외 분리율</button>
             </div>
           </div>
-          <div class="chart-wrap">
-            <canvas id="dualAxisChart"></canvas>
+          <div class="section-body">
+            <div class="chart-wrap">
+              <canvas id="dualAxisChart"></canvas>
+            </div>
+            <div class="spc-legend-bar" id="spcLegendBar">
+              <strong>증감 판정 기준 (최근 12개월 이동 기저선 ± 2SD):</strong>
+              <span class="badge b-spc-surge">▲ 급증 (+2SD 초과)</span>
+              <span class="badge b-spc-up">▲ 증가 (+1SD 초과 · 3개월 연속 상승)</span>
+              <span class="badge b-spc-stable">─ 유지 (±2SD 이내)</span>
+              <span class="badge b-spc-down">▼ 감소 (-2SD 미만)</span>
+              <span id="crePartialNote" style="margin-left:auto;"></span>
+            </div>
+            <div class="hai-strip" id="haiMiniStrip"></div>
           </div>
-          <div class="spc-legend-bar" id="spcLegendBar">
-            <strong>증감 판정 기준 (최근 12개월 이동 기저선 ± 2SD):</strong>
-            <span class="badge b-spc-surge">▲ 급증 (+2SD 초과)</span>
-            <span class="badge b-spc-up">▲ 증가 (+1SD 초과 · 3개월 연속 상승)</span>
-            <span class="badge b-spc-stable">─ 유지 (±2SD 이내)</span>
-            <span class="badge b-spc-down">▼ 감소 (-2SD 미만)</span>
-            <span id="crePartialNote" style="margin-left:auto;"></span>
-          </div>
-          <div class="hai-strip" id="haiMiniStrip"></div>
         </div>
 
         <!-- 국내·해외 통합 감염병 경보 목록 -->
-        <div class="card">
-          <div class="section-head">
+        <div class="section-box sec-list">
+          <div class="section-banner">
             <div>
-              <h2 class="section-title">국내·해외 감염병 경보 및 표본감시 통합 목록</h2>
+              <h2 class="section-title"><span class="sec-tag">패널 B</span> 국내·해외 감염병 경보 및 표본감시 통합 목록</h2>
               <div class="section-sub">파란 테두리: 국내(KDCA · 표본감시) · 보라 테두리: 해외(WHO DONs) · 긴급/주의/동향 등급 필터 및 정렬 지원</div>
             </div>
             <span class="section-sub" id="unifiedOutbreakMeta"></span>
           </div>
-          <div class="toolbar">
-            <div class="pill-group" id="obRegionGroup">
-              <button class="pill-btn active" data-region="all" type="button">전체</button>
-              <button class="pill-btn" data-region="domestic" type="button">국내 (KDCA)</button>
-              <button class="pill-btn" data-region="overseas" type="button">해외 (WHO)</button>
+          <div class="section-body">
+            <div class="toolbar">
+              <div class="pill-group" id="obRegionGroup">
+                <button class="pill-btn active" data-region="all" type="button">전체</button>
+                <button class="pill-btn" data-region="domestic" type="button">국내 (KDCA)</button>
+                <button class="pill-btn" data-region="overseas" type="button">해외 (WHO)</button>
+              </div>
+              <select class="select" id="obImpFilter">
+                <option value="">등급 전체 (긴급·주의·동향)</option>
+                <option value="Must-Read">긴급 (Must-Read · 85+)</option>
+                <option value="High">주의 (High · 70~84)</option>
+                <option value="Medium">동향 (Medium · 45~69)</option>
+                <option value="Low">단신 (Low · ~44)</option>
+              </select>
+              <select class="select" id="obSort">
+                <option value="date">최신순</option>
+                <option value="score">등급·점수 높은순 (예외 우선)</option>
+              </select>
+              <input class="input input-search" id="obSearch" type="search" placeholder="감염병명·국가·요약 키워드 검색..." />
+              <button class="btn" id="obCeOnly" type="button">🚨 예외 경보만</button>
             </div>
-            <select class="select" id="obImpFilter">
-              <option value="">등급 전체 (긴급·주의·동향)</option>
-              <option value="Must-Read">긴급 (Must-Read · 85+)</option>
-              <option value="High">주의 (High · 70~84)</option>
-              <option value="Medium">동향 (Medium · 45~69)</option>
-              <option value="Low">단신 (Low · ~44)</option>
-            </select>
-            <select class="select" id="obSort">
-              <option value="date">최신순</option>
-              <option value="score">등급·점수 높은순 (예외 우선)</option>
-            </select>
-            <input class="input input-search" id="obSearch" type="search" placeholder="감염병명·국가·요약 키워드 검색..." />
-            <button class="btn" id="obCeOnly" type="button">🚨 예외 경보만</button>
+            <div id="unifiedOutbreakList" class="item-list"></div>
           </div>
-          <div id="unifiedOutbreakList" class="item-list"></div>
         </div>
       </div>
 
@@ -819,6 +972,7 @@
             </div>
             <span class="section-sub" id="notifiableMeta"></span>
           </div>
+          <div id="kdcaLiveBar" class="live-check-bar" style="display:none;"></div>
           <div class="notifiable-banner">
             <div>
               <strong>신고 기한 요약:</strong> 제1급 <strong>즉시 신고(유선 선통보)</strong> · 제2급·제3급 <strong>24시간 이내</strong> · 제4급(표본감시) <strong>7일 이내(매주 화요일)</strong>
@@ -977,7 +1131,7 @@
     <div class="footer-note">
       본 대시보드는 공개 학술 초록(PubMed·Crossref) 및 공식 감염병 통계(KDCA·WHO) 기반 참고 요약입니다.
       AI 해석은 원문 사실과 분리 표기되며, 최종 임상·검사실 의사결정 시 반드시 원문을 확인하세요.
-      (북마크는 현재 기기 브라우저에 개인별 저장 · GitHub Pages 메인 단일화 v8.3.2)
+      (북마크는 현재 기기 브라우저에 개인별 저장 · GitHub Pages 메인 단일화 v8.3.3)
     </div>
   </main>
 
@@ -1260,6 +1414,30 @@
       }
     }
 
+    function updateTopbarHeightVar() {
+      const tb = document.querySelector('.topbar');
+      if (tb) {
+        document.documentElement.style.setProperty('--topbar-h', tb.offsetHeight + 'px');
+      }
+    }
+
+    function scrollToSection(id) {
+      updateTopbarHeightVar();
+      const el = document.getElementById(id);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function dateStrToIsoWeek(dateStr) {
+      const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(dateStr || ''));
+      if (!m) return '';
+      const d = new Date(Date.UTC(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10)));
+      const dayNum = d.getUTCDay() || 7;
+      d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+      const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+      const weekNo = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+      return d.getUTCFullYear() + '-W' + String(weekNo).padStart(2, '0');
+    }
+
     function jumpToWeek(weekKey) {
       state.selectedWeek = weekKey;
       const sel = document.getElementById('weekSelect');
@@ -1269,7 +1447,7 @@
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
-    /* ==================== 탭 1 렌더링 (패널 A 삭제 · 패널 B 선택 주차 연동) ==================== */
+    /* ==================== 탭 1 렌더링 (섹션 A 경보 -> 섹션 B 지침·가이드라인 출간 -> 섹션 C 논문 TOP 5) ==================== */
     function renderWeeklyBriefing() {
       const items = (state.data.items || []).filter(x => x.content_type !== 'duplicate');
       const surv = state.data.surveillance || {};
@@ -1279,19 +1457,44 @@
       const weekGuides = weekItems.filter(x => x.content_type === 'guideline').sort(compareTopPriority);
       const weekOutbreaks = weekItems.filter(x => x.content_type === 'outbreak').sort(compareTopPriority);
 
+      // 해당 주차 KDCA 법정감염병 지침 출간·개정 소식
+      const weekKdcaGuides = (state.data.kdcaGuidelineReleases || []).filter(r => r.week_key === wk);
+
+      // 해당 주차 CLSI (M·MM) / EUCAST 표준 발간·개정 소식
+      const rs = state.data.referenceStandards || {};
+      const allStds = [].concat(rs.clsi_m || [], rs.clsi_mm || [], rs.eucast || []);
+      const weekStdUpdates = allStds.filter(st => {
+        const pd = String(st.publishedDate || '');
+        const dm = /^(\d{4}-\d{2}-\d{2})/.exec(pd);
+        return dm && dateStrToIsoWeek(dm[1]) === wk;
+      });
+
       const refMonth = isoWeekToYearMonth(wk, weekItems);
       const snapshots = surv.monthlySnapshots || {};
       const monthAlerts = refMonth && snapshots[refMonth] ? snapshots[refMonth] : [];
 
-      document.getElementById('weekSummaryMeta').textContent =
-        wk + ' (기준월 ' + (refMonth || '-') + ') 수집분: 논문 ' + weekPapers.length + '편 · 가이드라인 ' + weekGuides.length + '건 · 경보 ' + weekOutbreaks.length + '건';
+      const totalAlertsCnt = monthAlerts.length + weekOutbreaks.length;
+      const totalGuidesCnt = weekKdcaGuides.length + weekGuides.length + weekStdUpdates.length;
 
+      // 필독 논문 TOP 5: Critical Exception 최우선 -> 잔여 슬롯 점수 높은순
+      const sortedPapers = weekPapers.slice().sort(compareTopPriority);
+      const ceCount = sortedPapers.filter(isCriticalException).length;
+      const mustCount = sortedPapers.filter(p => p.importance === 'Must-Read').length;
+      const highCount = sortedPapers.filter(p => p.importance === 'High').length;
+      const displayTop = sortedPapers.slice(0, 5);
+
+      document.getElementById('weekSummaryMeta').textContent =
+        wk + ' (기준월 ' + (refMonth || '-') + ') 수집분: 경보 ' + totalAlertsCnt + '건 · 지침·가이드라인 ' + totalGuidesCnt + '건 · 논문 ' + weekPapers.length + '편';
+      document.getElementById('jCntA').textContent = totalAlertsCnt;
+      document.getElementById('jCntB').textContent = totalGuidesCnt;
+      document.getElementById('jCntC').textContent = displayTop.length;
+
+      // SECTION A: 이상 급증(선택 주차 기준월 스냅샷) + 해당 주차 국내외 경보
       const baseYears = (surv.baselineYears || []).join('·');
       document.getElementById('weeklyAlertSub').textContent =
         '기준월 ' + (refMonth || '-') + ' 월간 전수감시 급증(' + monthAlerts.length + '건' +
         (baseYears ? ' · 기저:' + baseYears : '') + ') + ' + wk + ' 국내·해외 경보(' + weekOutbreaks.length + '건)';
 
-      // 이상 급증(선택 주차 기준월 스냅샷) + 해당 주차 국내외 경보
       const alertCards = [];
       monthAlerts.forEach(al => {
         const cls = al.level === 'critical' ? 'b-must' : 'b-high';
@@ -1315,29 +1518,65 @@
       weekOutbreaks.forEach(ob => alertCards.push(renderAccordionCard(ob, { useRegionStripe: true })));
       document.getElementById('weeklyAlertsBox').innerHTML = alertCards.length
         ? alertCards.join('')
-        : '<div class="empty-state">' + esc(wk) + ' (기준월 ' + esc(refMonth || '-') + ')에 등록된 전수감시 급증 및 국내·해외 감염병 경보가 없습니다.</div>';
+        : '<div class="empty-compact"><span>' + esc(wk) + ' (기준월 ' + esc(refMonth || '-') + ')에 등록된 전수감시 급증 및 국내·해외 감염병 경보가 없습니다.</span></div>';
 
-      // 필독 논문 TOP 5: Critical Exception 최우선 -> 잔여 슬롯 점수 높은순
-      const sortedPapers = weekPapers.slice().sort(compareTopPriority);
-      const ceCount = sortedPapers.filter(isCriticalException).length;
-      const mustCount = sortedPapers.filter(p => p.importance === 'Must-Read').length;
-      const highCount = sortedPapers.filter(p => p.importance === 'High').length;
-      const displayTop = sortedPapers.slice(0, 5);
+      // SECTION B: 법정감염병 지침 · 학회·표준 가이드라인 출간 소식
+      document.getElementById('weeklyGuideSub').textContent =
+        'KDCA 법정감염병 지침 ' + weekKdcaGuides.length + '건 · IDSA/ESCMID ' + weekGuides.length + '건 · CLSI/EUCAST ' + weekStdUpdates.length + '건';
 
+      const guideCards = [];
+      weekKdcaGuides.forEach(kr => {
+        guideCards.push(
+          '<div class="guide-release-row">' +
+            '<div style="flex:1; min-width:220px;">' +
+              '<div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">' +
+                '<span class="badge b-oa">KDCA 법정감염병 지침</span>' +
+                '<span class="badge b-source">' + esc(kr.pub_date) + ' · ' + esc(kr.week_key) + '</span>' +
+                (kr.dept ? '<span class="badge b-cat">' + esc(kr.dept) + '</span>' : '') +
+              '</div>' +
+              '<div class="guide-release-title">' + esc(kr.title) + '</div>' +
+            '</div>' +
+            '<a class="btn" href="' + esc(kr.url) + '" target="_blank" rel="noopener noreferrer" style="font-weight:700;">세부지침 바로가기 ↗</a>' +
+          '</div>'
+        );
+      });
+      weekStdUpdates.forEach(st => {
+        const sLabel = st.series === 'EUCAST' ? 'EUCAST 표준' : ('CLSI ' + st.series + ' 표준');
+        guideCards.push(
+          '<div class="guide-release-row is-std">' +
+            '<div style="flex:1; min-width:220px;">' +
+              '<div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">' +
+                '<span class="badge b-overseas">' + esc(sLabel) + '</span>' +
+                '<span class="badge b-std-new">' + esc(st.edition) + '</span>' +
+                '<span class="badge b-source">' + esc(st.publishedDate) + '</span>' +
+              '</div>' +
+              '<div class="guide-release-title">' + esc(st.code + ' — ' + st.titleKo) + '</div>' +
+              '<div style="font-size:0.79rem; color:var(--text-muted); margin-top:2px;">' + esc(st.note) + '</div>' +
+            '</div>' +
+            '<a class="btn" href="' + esc(st.url) + '" target="_blank" rel="noopener noreferrer" style="font-weight:700;">공식 페이지 ↗</a>' +
+          '</div>'
+        );
+      });
+      weekGuides.forEach(g => guideCards.push(renderAccordionCard(g)));
+
+      document.getElementById('weeklyGuideBox').innerHTML = guideCards.length
+        ? guideCards.join('')
+        : (
+          '<div class="empty-compact">' +
+            '<span>' + esc(wk) + '에 신규 출간·개정된 KDCA 법정감염병 지침 및 학회·표준 가이드라인이 없습니다.</span>' +
+            '<div style="display:flex; gap:6px; flex-wrap:wrap;">' +
+              '<button class="btn" type="button" onclick="switchTab(\'outbreak\'); setOutbreakSubView(\'notifiable\');">법정감염병 지침 전체 ↗</button>' +
+              '<button class="btn" type="button" onclick="switchTab(\'guideline\');">가이드라인 탭 ↗</button>' +
+            '</div>' +
+          '</div>'
+        );
+
+      // SECTION C: 필독 논문 TOP 5
       document.getElementById('top5Subtitle').textContent =
         '예외 필독 ' + ceCount + '편 우선 노출 → 필독(' + mustCount + ')·주목(' + highCount + ') 구분 없이 점수 상위 총 ' + displayTop.length + '편';
       document.getElementById('weeklyTop5Box').innerHTML = displayTop.length
         ? displayTop.map((p, idx) => renderAccordionCard(p, { rankNum: idx + 1 })).join('')
-        : '<div class="empty-state">해당 주차에 수집된 논문이 없습니다.</div>';
-
-      // 해당 주차 가이드라인
-      const gCard = document.getElementById('weeklyGuideCard');
-      if (weekGuides.length > 0) {
-        gCard.style.display = 'block';
-        document.getElementById('weeklyGuideBox').innerHTML = weekGuides.map(g => renderAccordionCard(g)).join('');
-      } else {
-        gCard.style.display = 'none';
-      }
+        : '<div class="empty-compact"><span>해당 주차에 수집된 논문이 없습니다.</span></div>';
     }
 
     /* ==================== 탭 2 렌더링: 그래프 끝점 라벨 + SPC ±2SD ==================== */
@@ -1667,6 +1906,18 @@
       const all = state.data.notifiableDiseases || [];
       const q = (document.getElementById('notifiableSearch').value || '').trim().toLowerCase();
 
+      const lcs = (state.data.referenceStandards && state.data.referenceStandards.liveCheckSummary) || null;
+      const kBar = document.getElementById('kdcaLiveBar');
+      if (kBar && lcs && lcs.kdcaStatus) {
+        kBar.style.display = 'flex';
+        kBar.innerHTML =
+          '<span class="badge b-oa">최신 지침 직링크</span>' +
+          (lcs.checkedAt ? ('<span><strong>점검시각:</strong> ' + esc(lcs.checkedAt) + '</span>') : '') +
+          '<span>' + esc(lcs.kdcaStatus) + '</span>';
+      } else if (kBar) {
+        kBar.style.display = 'none';
+      }
+
       const counts = { all: all.length, '1급': 0, '2급': 0, '3급': 0, '4급': 0, '공통·검사실': 0 };
       all.forEach(d => { if (counts[d.group] !== undefined) counts[d.group] += 1; });
 
@@ -1682,7 +1933,7 @@
       const list = all.filter(d => {
         if (state.notifiableGroup !== 'all' && d.group !== state.notifiableGroup) return false;
         if (q) {
-          const hay = (d.code + ' ' + d.name + ' ' + d.scope + ' ' + d.deadline + ' ' + d.lab + ' ' + d.dept + ' ' + d.guidelineGroup).toLowerCase();
+          const hay = (d.code + ' ' + d.name + ' ' + d.scope + ' ' + d.deadline + ' ' + d.lab + ' ' + d.dept + ' ' + d.guidelineGroup + ' ' + (d.latestTitle || '')).toLowerCase();
           if (hay.indexOf(q) === -1) return false;
         }
         return true;
@@ -1690,23 +1941,31 @@
 
       document.getElementById('notifiableMeta').textContent = '표시 ' + list.length + '건 / 전체 ' + all.length + '건';
       document.getElementById('notifiableList').innerHTML = list.length
-        ? list.map(d => (
-            '<article class="notifiable-item">' +
-              '<div class="notifiable-head">' +
-                '<span class="badge ' + notifiableGroupBadge(d.group) + '">' + esc(d.group) + '</span>' +
-                '<span class="badge b-source">' + esc(d.code) + '</span>' +
-                '<span class="notifiable-name">' + esc(d.name) + '</span>' +
-                '<span class="badge ' + (d.group === '1급' ? 'b-must' : (d.group === '공통·검사실' ? 'b-gcommon' : 'b-medium')) + '" style="margin-left:auto;">' + esc(d.deadline) + '</span>' +
-              '</div>' +
-              '<div class="notifiable-meta">' +
-                '<strong>신고범위:</strong> ' + esc(d.scope) + ' &nbsp;|&nbsp; <strong>진단검사 기준:</strong> ' + esc(d.lab) +
-              '</div>' +
-              '<div class="notifiable-foot">' +
-                '<div><strong>연계 지침:</strong> ' + esc(d.liveMatched ? (d.latestTitle || d.guidelineGroup) : d.guidelineGroup) + ' (' + esc(d.latestYear || '2026') + ') ' + (d.liveMatched ? '<span class="badge b-oa">게시판 자동매칭</span> ' : '') + '· <strong>담당:</strong> ' + esc(d.dept || '-') + '</div>' +
-                '<a href="' + esc(d.latestUrl || 'https://www.kdca.go.kr/kdca/2861/subview.do') + '" target="_blank" rel="noopener noreferrer" style="font-weight:700;">' + (d.liveMatched ? '최신 지침 바로가기 ↗' : 'KDCA 최신 지침 확인 ↗') + '</a>' +
-              '</div>' +
-            '</article>'
-          )).join('')
+        ? list.map(d => {
+            const isDirect = !!(d.liveMatched || d.directVerified);
+            const dateTag = d.latestDate ? d.latestDate : (d.latestYear || '2026');
+            const badgeHtml = d.liveMatched
+              ? '<span class="badge b-oa">포털 실시간 최신</span> '
+              : (d.directVerified ? '<span class="badge b-std-new">최신 세부지침 직링크</span> ' : '');
+            const displayGuideTitle = isDirect ? (d.latestTitle || d.guidelineGroup) : d.guidelineGroup;
+            return (
+              '<article class="notifiable-item">' +
+                '<div class="notifiable-head">' +
+                  '<span class="badge ' + notifiableGroupBadge(d.group) + '">' + esc(d.group) + '</span>' +
+                  '<span class="badge b-source">' + esc(d.code) + '</span>' +
+                  '<span class="notifiable-name">' + esc(d.name) + '</span>' +
+                  '<span class="badge ' + (d.group === '1급' ? 'b-must' : (d.group === '공통·검사실' ? 'b-gcommon' : 'b-medium')) + '" style="margin-left:auto;">' + esc(d.deadline) + '</span>' +
+                '</div>' +
+                '<div class="notifiable-meta">' +
+                  '<strong>신고범위:</strong> ' + esc(d.scope) + ' &nbsp;|&nbsp; <strong>진단검사 기준:</strong> ' + esc(d.lab) +
+                '</div>' +
+                '<div class="notifiable-foot">' +
+                  '<div><strong>연계 지침:</strong> ' + esc(displayGuideTitle) + ' (' + esc(dateTag) + ') ' + badgeHtml + '· <strong>담당:</strong> ' + esc(d.dept || '-') + '</div>' +
+                  '<a href="' + esc(d.latestUrl || 'https://dportal.kdca.go.kr/pot/bbs/BD_selectBbsList.do?q_bbsSn=1001') + '" target="_blank" rel="noopener noreferrer" style="font-weight:700;">' + (isDirect ? '최신 세부지침 바로가기 ↗' : 'KDCA 감염병지침 게시판 ↗') + '</a>' +
+                '</div>' +
+              '</article>'
+            );
+          }).join('')
         : '<div class="empty-state">조건에 맞는 법정감염병·지침이 없습니다.</div>';
     }
 
@@ -1925,7 +2184,9 @@
       document.getElementById('cntGuideline').textContent = guidelines.length;
       document.getElementById('cntPaper').textContent = papers.length;
 
-      const weeks = Array.from(new Set(items.map(x => x.week_key).filter(Boolean))).sort().reverse();
+      const wkSet = new Set(items.map(x => x.week_key).filter(Boolean));
+      (data.kdcaGuidelineReleases || []).forEach(r => { if (r.week_key) wkSet.add(r.week_key); });
+      const weeks = Array.from(wkSet).sort().reverse();
       const weekSel = document.getElementById('weekSelect');
       weekSel.innerHTML = weeks.map(w => '<option value="' + esc(w) + '">' + esc(w) + '</option>').join('');
       state.selectedWeek = weeks[0] || '2026-W47';
@@ -1959,6 +2220,7 @@
       renderReferenceStandards();
       renderGuidelines();
       renderPapers();
+      updateTopbarHeightVar();
     }
 
     function setOutbreakSubView(viewName) {
@@ -2098,6 +2360,8 @@
 
     async function boot() {
       bindEvents();
+      updateTopbarHeightVar();
+      window.addEventListener('resize', updateTopbarHeightVar);
       try {
         const res = await fetch('./data/dashboard.json?v=' + Date.now());
         if (!res.ok) throw new Error('HTTP ' + res.status);
