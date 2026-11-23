@@ -21,6 +21,7 @@ import csv
 import datetime
 import html
 import json
+import math
 import os
 import re
 import time
@@ -31,7 +32,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 import requests
 
-CODE_VERSION = "v8.2.1"
+CODE_VERSION = "v8.3.0"
 KST = datetime.timezone(datetime.timedelta(hours=9))
 
 SHEET_ITEMS = "items"
@@ -112,11 +113,18 @@ WHO_COUNTRY_MAP = [
     (r"Global|전 세계|글로벌", "글로벌"),
 ]
 
+
+# =====================================================================
+# 2026 법정감염병(91종) + 공통·검사실 KDCA 지침(8종) & CLSI(M·MM)/EUCAST 현황판
+# =====================================================================
+NOTIFIABLE_DISEASES_MASTER_JSON = "[{\"code\": \"제1급-1\", \"group\": \"1급\", \"name\": \"에볼라바이러스병(Ebola virus disease)\", \"scope\": \"환자, 의사환자\", \"deadline\": \"즉시 신고\", \"lab\": \"○ 검체(혈액, 체액 등)에서 특이 유전자 검출\", \"dept\": \"신종감염병대응과, 고위험병원체분석과(진단)\", \"guidelineGroup\": \"바이러스성 출혈열 대응지침\", \"guidelineKeyword\": \"바이러스성 출혈열\", \"latestTitle\": \"바이러스성 출혈열 대응지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제1급-2\", \"group\": \"1급\", \"name\": \"마버그열(Marburg Hemorrhagic fever)\", \"scope\": \"환자, 의사환자\", \"deadline\": \"즉시 신고\", \"lab\": \"○ 검체(혈액, 체액 등)에서 특이 유전자 검출\", \"dept\": \"신종감염병대응과, 고위험병원체분석과(진단)\", \"guidelineGroup\": \"바이러스성 출혈열 대응지침\", \"guidelineKeyword\": \"바이러스성 출혈열\", \"latestTitle\": \"바이러스성 출혈열 대응지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제1급-3\", \"group\": \"1급\", \"name\": \"라싸열(Lassa fever)\", \"scope\": \"환자, 의사환자\", \"deadline\": \"즉시 신고\", \"lab\": \"○ 검체(혈액, 체액 등)에서 특이 유전자 검출\", \"dept\": \"신종감염병대응과, 고위험병원체분석과(진단)\", \"guidelineGroup\": \"바이러스성 출혈열 대응지침\", \"guidelineKeyword\": \"바이러스성 출혈열\", \"latestTitle\": \"바이러스성 출혈열 대응지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제1급-4\", \"group\": \"1급\", \"name\": \"크리미안콩고출혈열(Crimean-Congo Hemorrhagic fever)\", \"scope\": \"환자, 의사환자\", \"deadline\": \"즉시 신고\", \"lab\": \"○ 검체(혈액, 체액 등)에서 특이 유전자 검출\", \"dept\": \"신종감염병대응과, 고위험병원체분석과(진단)\", \"guidelineGroup\": \"바이러스성 출혈열 대응지침\", \"guidelineKeyword\": \"바이러스성 출혈열\", \"latestTitle\": \"바이러스성 출혈열 대응지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제1급-5\", \"group\": \"1급\", \"name\": \"남아메리카출혈열(South American Hemorrhagic fever)\", \"scope\": \"환자, 의사환자\", \"deadline\": \"즉시 신고\", \"lab\": \"○ 검체(혈액, 체액 등)에서 특이 유전자 검출\", \"dept\": \"신종감염병대응과, 고위험병원체분석과(진단)\", \"guidelineGroup\": \"바이러스성 출혈열 대응지침\", \"guidelineKeyword\": \"바이러스성 출혈열\", \"latestTitle\": \"바이러스성 출혈열 대응지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제1급-6\", \"group\": \"1급\", \"name\": \"리프트밸리열(Rift Valley fever)\", \"scope\": \"환자, 의사환자\", \"deadline\": \"즉시 신고\", \"lab\": \"○ 검체(혈액, 체액 등)에서 특이 유전자 검출\", \"dept\": \"신종감염병대응과, 고위험병원체분석과(진단)\", \"guidelineGroup\": \"바이러스성 출혈열 대응지침\", \"guidelineKeyword\": \"바이러스성 출혈열\", \"latestTitle\": \"바이러스성 출혈열 대응지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제1급-7\", \"group\": \"1급\", \"name\": \"두창(Smallpox)\", \"scope\": \"환자, 의사환자\", \"deadline\": \"즉시 신고\", \"lab\": \"○ 검체(혈액, 피부병변조직, 피부병변액, 가피 등)에서 특이 유전자 검출\", \"dept\": \"신종감염병대응과, 고위험병원체분석과(진단)\", \"guidelineGroup\": \"생물테러 대비·대응 지침\", \"guidelineKeyword\": \"생물테러\", \"latestTitle\": \"생물테러 대비·대응 지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제1급-8\", \"group\": \"1급\", \"name\": \"페스트(Plague)\", \"scope\": \"환자, 의사환자\", \"deadline\": \"즉시 신고\", \"lab\": \"○ 검체(혈액, 가래, 기관지세척액, 림프절흡인물 등)에서 Y. pestis 분리 동정\", \"dept\": \"신종감염병대응과, 고위험병원체분석과(진단)\", \"guidelineGroup\": \"생물테러 대비·대응 지침\", \"guidelineKeyword\": \"생물테러\", \"latestTitle\": \"생물테러 대비·대응 지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제1급-9\", \"group\": \"1급\", \"name\": \"탄저(Anthrax)\", \"scope\": \"환자, 의사환자\", \"deadline\": \"즉시 신고\", \"lab\": \"○ 검체(혈액, 수포도말, 대변, 가래, 뇌척수액 등)에서 B. anthracis 분리 동정\", \"dept\": \"신종감염병대응과, 고위험병원체분석과(진단)\", \"guidelineGroup\": \"생물테러 대비·대응 지침\", \"guidelineKeyword\": \"생물테러\", \"latestTitle\": \"생물테러 대비·대응 지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제1급-10\", \"group\": \"1급\", \"name\": \"보툴리눔독소증(Botulism)\", \"scope\": \"환자, 의사환자\", \"deadline\": \"즉시 신고\", \"lab\": \"○ 검체(대변, 구토물, 위흡인물)에서 독소 생성 C. botulinum 등 분리 동정 ○ 검체(혈액, 대변, 구토물, 위흡인물 등)에서 보툴리눔독소 검출\", \"dept\": \"신종감염병대응과, 고위험병원체분석과(진단)\", \"guidelineGroup\": \"생물테러 대비·대응 지침\", \"guidelineKeyword\": \"생물테러\", \"latestTitle\": \"생물테러 대비·대응 지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제1급-11\", \"group\": \"1급\", \"name\": \"야토병(Tularemia)\", \"scope\": \"환자, 의사환자\", \"deadline\": \"즉시 신고\", \"lab\": \"○ 검체(혈액, 가래, 기관지세척액, 림프절흡인물, 조직 등)에서 F. tularensis 분리 동정\", \"dept\": \"신종감염병대응과, 고위험병원체분석과(진단)\", \"guidelineGroup\": \"생물테러 대비·대응 지침\", \"guidelineKeyword\": \"생물테러\", \"latestTitle\": \"생물테러 대비·대응 지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제1급-12\", \"group\": \"1급\", \"name\": \"신종감염병증후군\", \"scope\": \"환자, 의사환자\", \"deadline\": \"즉시 신고\", \"lab\": \"국내 미발생 신종 병원체 의심 증후군(급성출혈열·호흡기·설사·황달·신경증후군) 임상·역학 판정 및 KDCA 확인검사\", \"dept\": \"위기관리총괄과, 신종감염병대응과\", \"guidelineGroup\": \"신종감염병 대응지침\", \"guidelineKeyword\": \"신종감염병\", \"latestTitle\": \"신종감염병 대응지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제1급-13\", \"group\": \"1급\", \"name\": \"중증급성호흡기증후군 (Severe Acute Respiratory Syndrome, SARS)\", \"scope\": \"환자, 의사환자\", \"deadline\": \"즉시 신고\", \"lab\": \"○ 검체(구인두도말, 비인두도말, 비인두흡인물, 가래, 기관지폐포세척액 등)에서 특이 유전자 검출\", \"dept\": \"신종감염병대응과, 신종병원체분석과(진단)\", \"guidelineGroup\": \"메르스·중증호흡기 대응지침\", \"guidelineKeyword\": \"메르스\", \"latestTitle\": \"메르스·중증호흡기 대응지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제1급-14\", \"group\": \"1급\", \"name\": \"중동호흡기증후군 (Middle East Respiratory Syndrome: MERS)\", \"scope\": \"환자, 의사환자, 병원체보유자\", \"deadline\": \"즉시 신고\", \"lab\": \"○ 검체(구인두도말, 비인두도말, 비인두흡인물, 비강흡인물, 가래, 기관흡인물, 기관지폐포세척액 등)에서 특이 유전자 검출\", \"dept\": \"신종감염병대응과, 신종병원체분석과(진단)\", \"guidelineGroup\": \"메르스·중증호흡기 대응지침\", \"guidelineKeyword\": \"메르스\", \"latestTitle\": \"메르스·중증호흡기 대응지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제1급-15\", \"group\": \"1급\", \"name\": \"동물인플루엔자 인체감염증 (Human infection with zoonotic influenza)\", \"scope\": \"환자, 의사환자\", \"deadline\": \"즉시 신고\", \"lab\": \"○ 검체(구인두도말, 비인두도말, 비인두흡인물, 가래, 기관지흡인물, 기관지폐포세척액)에서 Animal influenza virus 분리 ○ 회복기 혈청의 항체가가 급성기에 비하여 4배 이상 증가 ○ 검체(구인두도말, 비인두도말, 비인두흡인물, 가래, 기관지흡인물, 기관지폐포세척액, 안(眼) 점막 도말물)에서 특이 유전자 검출\", \"dept\": \"신종감염병대응과, 신종병원체분석과(진단)\", \"guidelineGroup\": \"조류·동물인플루엔자 인체감염증 대응지침\", \"guidelineKeyword\": \"조류인플루엔자\", \"latestTitle\": \"조류·동물인플루엔자 인체감염증 대응지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제1급-16\", \"group\": \"1급\", \"name\": \"신종인플루엔자(Novel influenza)\", \"scope\": \"환자, 의사환자\", \"deadline\": \"즉시 신고\", \"lab\": \"○ 검체(구인두도말, 비인두도말, 비인두흡인물, 가래, 기관지흡인물, 기관지폐포세척액)에서 바이러스 분리 ○ 회복기 혈청의 항체가가 급성기에 비하여 4배 이상 증가 ○ 검체(혈액)에서 특이 항체 검출 ○ 검체(구인두도말, 비인두도말, 비인두흡인물, 가래, 기관지흡인물, 기관지폐포세척액)에서 특이 유전자 검출 * 새로운 바이러스의 유행...\", \"dept\": \"위기관리총괄과, 신종감염병대응과, 신종병원체분석과(진단)\", \"guidelineGroup\": \"조류·동물인플루엔자 인체감염증 대응지침\", \"guidelineKeyword\": \"조류인플루엔자\", \"latestTitle\": \"조류·동물인플루엔자 인체감염증 대응지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제1급-17\", \"group\": \"1급\", \"name\": \"디프테리아(Diphtheria)\", \"scope\": \"환자, 의사환자\", \"deadline\": \"즉시 신고\", \"lab\": \"○ 확인 진단 - 검체(구인두도말, 비인두도말, 비강도말, 위막조직)에서 독소생성 C. diphtheriae 분리 동정 - 검체(구인두도말, 비인두도말, 비강도말, 위막조직)에서 특이(독소유전자 포함) 유전자 검출 ○ 추정 진단 - 검체(구인두도말, 비인두도말, 비강도말, 위막조직 등)에서 C. diphtheriae 분리 동정\", \"dept\": \"감염병관리과, 세균분석과(진단)\", \"guidelineGroup\": \"예방접종 대상 감염병 관리지침\", \"guidelineKeyword\": \"예방접종\", \"latestTitle\": \"예방접종 대상 감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제1급-18\", \"group\": \"1급\", \"name\": \"니파바이러스감염증(Nipah virus infection)\", \"scope\": \"환자, 의사환자\", \"deadline\": \"즉시 신고\", \"lab\": \"○ 검체(인후도말, 비강 및 비인두 흡인물, 뇌척수액, 소변 등)에서 특이 유전자 검출\", \"dept\": \"신종감염병대응과, 고위험병원체분석과(진단)\", \"guidelineGroup\": \"니파바이러스감염증 대응지침\", \"guidelineKeyword\": \"니파바이러스\", \"latestTitle\": \"니파바이러스감염증 대응지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제2급-1\", \"group\": \"2급\", \"name\": \"결핵(Tuberculosis)\", \"scope\": \"환자, 의사환자\", \"deadline\": \"24시간 이내 신고\", \"lab\": \"○ 검체(가래, 기관지세척액, 체액, 조직)에서 항산균도말 양성 ○ 검체(가래, 기관지세척액, 체액, 조직)에서 결핵균* 분리 동정 * 특히, M. bovis는 배양에서 동정이 되어야 확진 ○ 검체(가래, 기관지세척액, 체액, 조직)에서 특이 유전자 검출\", \"dept\": \"결핵정책과, 세균분석과(진단)\", \"guidelineGroup\": \"국가결핵관리지침\", \"guidelineKeyword\": \"결핵\", \"latestTitle\": \"국가결핵관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제2급-2\", \"group\": \"2급\", \"name\": \"수두(Varicella)\", \"scope\": \"환자, 의사환자\", \"deadline\": \"24시간 이내 신고\", \"lab\": \"○ 검체(수포액, 가피, 구인두도말, 비인두도말, 혈액, 뇌척수액 등)에서 Human alphaherpesvirus 3 분리 ○ 회복기 혈청의 항체가가 급성기에 비하여 4배 이상 증가 ○ 검체(혈액)에서 특이 IgM 항체 검출 ○ 검체(수포액, 가피, 구인두도말, 비인두도말, 혈액, 뇌척수액 등)에서 특이 유전자 검출\", \"dept\": \"감염병관리과, 바이러스분석과(진단)\", \"guidelineGroup\": \"예방접종 대상 감염병 관리지침\", \"guidelineKeyword\": \"예방접종\", \"latestTitle\": \"예방접종 대상 감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제2급-3\", \"group\": \"2급\", \"name\": \"홍역(Measles)\", \"scope\": \"환자, 의사환자\", \"deadline\": \"24시간 이내 신고\", \"lab\": \"○ 검체(비강도말, 구인두도말, 비인두도말, 혈액, 소변 등)에서 Measles morbillivirus 분리 ○ 회복기 혈청의 항체가가 급성기에 비하여 4배 이상 증가 ○ 검체(혈액)에서 특이 IgM 항체 검출 ○ 검체(비강도말, 구인두도말, 비인두도말, 혈액, 소변 등)에서 특이 유전자 검출\", \"dept\": \"감염병관리과, 바이러스분석과(진단)\", \"guidelineGroup\": \"예방접종 대상 감염병 관리지침\", \"guidelineKeyword\": \"예방접종\", \"latestTitle\": \"예방접종 대상 감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제2급-4\", \"group\": \"2급\", \"name\": \"콜레라(Cholera)\", \"scope\": \"환자, 의사환자, 병원체보유자\", \"deadline\": \"24시간 이내 신고\", \"lab\": \"○ 확인 진단 - 검체(대변, 직장도말, 구토물)에서 독소형 콜레라균(V. cholerae O1 또는 O139) 분리동정 ○ 추정 진단 - 검체(대변, 직장도말, 구토물 등)에서 독소 유무를 알 수 없는 V. cholerae O1 또는 O139 분리 동정 - 검체(대변, 직장도말, 구토물 등)에서 독소 유전자(ctxA) 검출\", \"dept\": \"감염병관리과, 세균분석과(진단)\", \"guidelineGroup\": \"수인성 및 식품매개감염병 관리지침\", \"guidelineKeyword\": \"수인성\", \"latestTitle\": \"수인성 및 식품매개감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제2급-5\", \"group\": \"2급\", \"name\": \"장티푸스(Typhoid fever)\", \"scope\": \"환자, 의사환자, 병원체보유자\", \"deadline\": \"24시간 이내 신고\", \"lab\": \"○ 확인 진단 - 검체(대변, 직장도말, 소변, 담즙, 골수, 혈액)에서 S. Typhi 분리 동정 ○ 추정 진단 - 검체(혈액)에서 특이 항체 검출\", \"dept\": \"감염병관리과, 세균분석과(진단)\", \"guidelineGroup\": \"수인성 및 식품매개감염병 관리지침\", \"guidelineKeyword\": \"수인성\", \"latestTitle\": \"수인성 및 식품매개감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제2급-6\", \"group\": \"2급\", \"name\": \"파라티푸스(Paratyphoid fever)\", \"scope\": \"환자, 의사환자, 병원체보유자\", \"deadline\": \"24시간 이내 신고\", \"lab\": \"○ 확인 진단 - 검체(대변, 직장도말, 소변, 담즙, 골수, 혈액)에서 S. Paratyphi A, B, C 분리 동정 ○ 추정 진단 - 검체(혈액)에서 특이 항체 검출\", \"dept\": \"감염병관리과, 세균분석과(진단)\", \"guidelineGroup\": \"수인성 및 식품매개감염병 관리지침\", \"guidelineKeyword\": \"수인성\", \"latestTitle\": \"수인성 및 식품매개감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제2급-7\", \"group\": \"2급\", \"name\": \"세균성이질(Shigellosis, Bacillary dysentery)\", \"scope\": \"환자, 의사환자, 병원체보유자\", \"deadline\": \"24시간 이내 신고\", \"lab\": \"○ 확인 진단 - 검체(대변, 직장도말)에서 세균성이질균 분리 동정 ○ 추정 진단 - 검체(대변, 직장도말)에서 특이 유전자(ipaH) 검출\", \"dept\": \"감염병관리과, 세균분석과(진단)\", \"guidelineGroup\": \"수인성 및 식품매개감염병 관리지침\", \"guidelineKeyword\": \"수인성\", \"latestTitle\": \"수인성 및 식품매개감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제2급-8\", \"group\": \"2급\", \"name\": \"장출혈성대장균(Enterohemorrhagic Escherichia coli) 감염증\", \"scope\": \"환자, 의사환자, 병원체보유자\", \"deadline\": \"24시간 이내 신고\", \"lab\": \"○ 확인 진단 ­ 검체(대변, 직장도말)에서 독소 유전자(stx1, stx2)를 보유한 E. coli 분리 동정 ○ 추정 진단 ­검체(대변, 직장도말)에서 독소 유전자(stx1, stx2) 검출\", \"dept\": \"감염병관리과, 세균분석과(진단)\", \"guidelineGroup\": \"수인성 및 식품매개감염병 관리지침\", \"guidelineKeyword\": \"수인성\", \"latestTitle\": \"수인성 및 식품매개감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제2급-9\", \"group\": \"2급\", \"name\": \"A형간염(Viral hepatitis A)\", \"scope\": \"환자, 의사환자, 병원체보유자\", \"deadline\": \"24시간 이내 신고\", \"lab\": \"○ 검체(혈액)에서 특이 IgM 항체 검출 ○ 검체(혈액, 대변, 직장도말)에서 특이 유전자 검출\", \"dept\": \"감염병관리과, 바이러스분석과(진단)\", \"guidelineGroup\": \"바이러스성 간염 관리지침\", \"guidelineKeyword\": \"간염\", \"latestTitle\": \"바이러스성 간염 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제2급-10\", \"group\": \"2급\", \"name\": \"백일해(Pertussis)\", \"scope\": \"환자, 의사환자\", \"deadline\": \"24시간 이내 신고\", \"lab\": \"○ 검체(비인두도말, 비인두흡인물, 가래)에서 B. pertussis 분리 동정 ○ 검체(비인두도말, 비인두흡인물, 가래)에서 특이 유전자 검출\", \"dept\": \"감염병관리과, 세균분석과(진단)\", \"guidelineGroup\": \"예방접종 대상 감염병 관리지침\", \"guidelineKeyword\": \"예방접종\", \"latestTitle\": \"예방접종 대상 감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제2급-11\", \"group\": \"2급\", \"name\": \"유행성이하선염(Mumps)\", \"scope\": \"환자, 의사환자\", \"deadline\": \"24시간 이내 신고\", \"lab\": \"○ 검체(타액, 볼점막도말, 구인두도말, 비인두도말, 혈액, 소변, 뇌척수액)에서 Mumps orthorubulavirus 분리 ○회복기 혈청의 항체가가 급성기에 비하여 4배 이상 증가 ○검체(혈액)에서 특이 IgM 항체 검출 ○검체(타액, 볼점막도말, 구인두도말, 비인두도말, 혈액, 소변, 뇌척수액)에서 특이 유전자 검출\", \"dept\": \"감염병관리과, 바이러스분석과(진단)\", \"guidelineGroup\": \"예방접종 대상 감염병 관리지침\", \"guidelineKeyword\": \"예방접종\", \"latestTitle\": \"예방접종 대상 감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제2급-12\", \"group\": \"2급\", \"name\": \"풍진(Rubella)\", \"scope\": \"환자, 의사환자\", \"deadline\": \"24시간 이내 신고\", \"lab\": \"① 선천성 풍진 ○ 검체(비강도말, 구인두도말, 비인두도말, 혈액, 소변, 뇌척수액)에서 Rubivirus rubellae 분리 ○ 모체 항체가가 없어지는 시기(생후 약 9개월) 이후에도 항체 지속 검출 ○ 검체(혈액)에서 특이 IgM 항체 검출 ○ 검체(비강도말, 구인두도말, 비인두도말, 혈액, 소변, 뇌척수액)에서 특이 유전자 검...\", \"dept\": \"감염병관리과, 바이러스분석과(진단)\", \"guidelineGroup\": \"예방접종 대상 감염병 관리지침\", \"guidelineKeyword\": \"예방접종\", \"latestTitle\": \"예방접종 대상 감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제2급-13\", \"group\": \"2급\", \"name\": \"폴리오(Poliomyelitis)\", \"scope\": \"환자, 의사환자\", \"deadline\": \"24시간 이내 신고\", \"lab\": \"○ 검체(대변, 뇌척수액, 구인두도말, 비인두도말, 혈액)에서 Poliovirus 분리\", \"dept\": \"감염병관리과, 바이러스분석과(진단)\", \"guidelineGroup\": \"예방접종 대상 감염병 관리지침\", \"guidelineKeyword\": \"예방접종\", \"latestTitle\": \"예방접종 대상 감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제2급-14\", \"group\": \"2급\", \"name\": \"수막구균 감염증(Meningococcal disease)\", \"scope\": \"환자, 의사환자\", \"deadline\": \"24시간 이내 신고\", \"lab\": \"○ 검체(뇌척수액, 혈액 등)에서 N. meningitidis 분리 동정\", \"dept\": \"감염병관리과, 세균분석과(진단)\", \"guidelineGroup\": \"예방접종 대상 감염병 관리지침\", \"guidelineKeyword\": \"예방접종\", \"latestTitle\": \"예방접종 대상 감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제2급-15\", \"group\": \"2급\", \"name\": \"b형헤모필루스인플루엔자(Haemophilus influenzae type b)\", \"scope\": \"환자, 의사환자\", \"deadline\": \"24시간 이내 신고\", \"lab\": \"○ 확인 진단 - 검체(혈액, 뇌척수액, 관절액, 늑막액, 심낭액, 복수, 생검조직 등)에서 H. influenzae type b 분리 동정 ○ 추정 진단 - 검체(혈액, 뇌척수액, 관절액, 늑막액, 심낭액, 복수, 생검조직 등)에서 H. influenzae 분리 동정 - 검체(혈액, 뇌척수액, 관절액, 늑막액, 심낭액, 복수, 생검...\", \"dept\": \"감염병관리과, 세균분석과(진단)\", \"guidelineGroup\": \"예방접종 대상 감염병 관리지침\", \"guidelineKeyword\": \"예방접종\", \"latestTitle\": \"예방접종 대상 감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제2급-16\", \"group\": \"2급\", \"name\": \"폐렴구균 감염증(Pneumococcal disease)\", \"scope\": \"환자, 의사환자\", \"deadline\": \"24시간 이내 신고\", \"lab\": \"○ 확인 진단 - 검체(혈액, 뇌척수액, 관절액, 늑막액, 심낭액, 복수, 생검조직 등)에서 S. pneumoniae 분리 동정 ○ 추정 진단 - 검체(혈액, 뇌척수액, 관절액, 늑막액, 심낭액, 복수, 생검조직 등)에서 특이 항원 검출 - 검체(혈액, 뇌척수액, 관절액, 늑막액, 심낭액, 복수, 생검조직 등)에서 특이 유전자 검출\", \"dept\": \"감염병관리과, 세균분석과(진단)\", \"guidelineGroup\": \"예방접종 대상 감염병 관리지침\", \"guidelineKeyword\": \"예방접종\", \"latestTitle\": \"예방접종 대상 감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제2급-17\", \"group\": \"2급\", \"name\": \"한센병(Hansen’s disease, Leprosy)\", \"scope\": \"환자\", \"deadline\": \"24시간 이내 신고\", \"lab\": \"○ 분자생물학적 검사법에 의한 나균 확인 ○ 조직검사상 한센병 육아종 소견 확인 ○ 병변의 도말검사(항산성 염색)에서 항산성균 확인\", \"dept\": \"결핵정책과\", \"guidelineGroup\": \"한센병 사업관리지침\", \"guidelineKeyword\": \"한센병\", \"latestTitle\": \"한센병 사업관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제2급-18\", \"group\": \"2급\", \"name\": \"성홍열(Scarlet fever)\", \"scope\": \"환자, 의사환자\", \"deadline\": \"24시간 이내 신고\", \"lab\": \"○ 확인 진단 - 검체(구인두도말, 혈액)에서 S. pyogenes 분리 동정 ○ 추정 진단 - 검체(구인두도말)에서 특이 항원 검출\", \"dept\": \"감염병관리과, 세균분석과(진단)\", \"guidelineGroup\": \"호흡기감염병 관리지침\", \"guidelineKeyword\": \"호흡기감염병\", \"latestTitle\": \"호흡기감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제2급-19\", \"group\": \"2급\", \"name\": \"반코마이신내성황색포도알균(VRSA) 감염증\", \"scope\": \"환자, 병원체보유자\", \"deadline\": \"24시간 이내 신고\", \"lab\": \"임상검체 S. aureus 중 Vancomycin MIC 4~8(VISA) 또는 ≥16 µg/mL(VRSA) 확인 (혈액=환자, 혈액외=보유자)\", \"dept\": \"의료감염관리과, 세균분석과(진단)\", \"guidelineGroup\": \"의료관련감염병 관리지침\", \"guidelineKeyword\": \"의료관련감염병\", \"latestTitle\": \"의료관련감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제2급-20\", \"group\": \"2급\", \"name\": \"카바페넴내성장내세균목(CRE) 감염증\", \"scope\": \"환자, 병원체보유자\", \"deadline\": \"24시간 이내 신고\", \"lab\": \"임상검체 Enterobacterales 중 Doripenem/Imipenem/Meropenem MIC ≥4(≤19mm) 또는 Ertapenem MIC ≥2 µg/mL(≤18mm) 내성 확인 (CPE 생성 별도 신고)\", \"dept\": \"의료감염관리과, 세균분석과(진단)\", \"guidelineGroup\": \"의료관련감염병 관리지침\", \"guidelineKeyword\": \"의료관련감염병\", \"latestTitle\": \"의료관련감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제2급-21\", \"group\": \"2급\", \"name\": \"E형간염(Viral hepatitis E)\", \"scope\": \"환자, 병원체보유자\", \"deadline\": \"24시간 이내 신고\", \"lab\": \"○ 검체(혈액)에서 특이 IgM 항체 검출 ○ 검체(혈액, 대변, 직장도말)에서 특이 유전자 검출\", \"dept\": \"감염병관리과, 바이러스분석과(진단)\", \"guidelineGroup\": \"바이러스성 간염 관리지침\", \"guidelineKeyword\": \"간염\", \"latestTitle\": \"바이러스성 간염 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제3급-1\", \"group\": \"3급\", \"name\": \"파상풍(Tetanus)\", \"scope\": \"환자\", \"deadline\": \"24시간 이내 신고\", \"lab\": \"임상진단 기준 적용 (파상풍에 부합하는 특징적 임상증상)\", \"dept\": \"감염병관리과\", \"guidelineGroup\": \"예방접종 대상 감염병 관리지침\", \"guidelineKeyword\": \"예방접종\", \"latestTitle\": \"예방접종 대상 감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제3급-2\", \"group\": \"3급\", \"name\": \"B형간염(Viral hepatitis B)\", \"scope\": \"환자\", \"deadline\": \"24시간 이내 신고\", \"lab\": \"○ 검체(혈액)에서 특이 항원(HBsAg) 및 특이 항체(IgM anti-HBc) 검출 (단, 6개월 전에 B형간염을 진단받았던 자는 제외함) ○ 검체(혈액)에서 특이 항체(IgM anti-HBc) 검출\", \"dept\": \"감염병관리과, 바이러스분석과(진단)\", \"guidelineGroup\": \"바이러스성 간염 관리지침\", \"guidelineKeyword\": \"간염\", \"latestTitle\": \"바이러스성 간염 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제3급-3\", \"group\": \"3급\", \"name\": \"일본뇌염(Japanese encephalitis)\", \"scope\": \"환자, 의사환자\", \"deadline\": \"24시간 이내 신고\", \"lab\": \"○ 확인 진단 - 검체(혈액, 뇌척수액)에서 Japanese encephalitis virus 분리 - 회복기 혈청의 항체가가 급성기에 비하여 4배 이상 증가 - 검체(혈액, 뇌척수액)에서 특이 유전자 검출 ○ 추정진단 - 검체(혈액, 뇌척수액)에서 특이 IgM 항체 검출\", \"dept\": \"인수공통감염병관리과, 바이러스분석과(진단)\", \"guidelineGroup\": \"모기매개감염병 관리지침\", \"guidelineKeyword\": \"모기매개\", \"latestTitle\": \"모기매개감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제3급-4\", \"group\": \"3급\", \"name\": \"C형간염(Viral hepatitis C)\", \"scope\": \"환자, 병원체보유자\", \"deadline\": \"24시간 이내 신고\", \"lab\": \"○ 검체(혈액)에서 특이 유전자 검출\", \"dept\": \"감염병관리과, 바이러스분석과(진단)\", \"guidelineGroup\": \"바이러스성 간염 관리지침\", \"guidelineKeyword\": \"간염\", \"latestTitle\": \"바이러스성 간염 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제3급-5\", \"group\": \"3급\", \"name\": \"말라리아(Malaria)\", \"scope\": \"환자, 의사환자, 병원체보유자\", \"deadline\": \"24시간 이내 신고\", \"lab\": \"○ 확인 진단 - 검체(혈액)에서 도말검사로 말라리아 원충(충체) 확인 - 검체(혈액)에서 특이 유전자 검출 ○ 추정 진단 - 검체(혈액)에서 특이 항원 검출(신속진단검사 포함)\", \"dept\": \"인수공통감염병관리과, 매개체분석과(진단)\", \"guidelineGroup\": \"말라리아 관리지침\", \"guidelineKeyword\": \"말라리아\", \"latestTitle\": \"말라리아 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제3급-6\", \"group\": \"3급\", \"name\": \"레지오넬라증(Legionellosis)\", \"scope\": \"환자, 의사환자\", \"deadline\": \"24시간 이내 신고\", \"lab\": \"○ 확인 진단 - 검체(기관지세척액, 기관지폐포액, 기관지흡인물, 가래, 폐조직, 흉수, 혈액 등)에서 레지오넬라균 분리 동정 - 검체(소변)에서 특이 항원 검출 - 회복기 혈청의 항체가가 급성기에 비하여 4배 이상 증가 ○ 추정 진단 - 검체(기관지세척액, 기관지폐포액, 기관지흡인물, 가래, 폐조직, 흉수, 혈액 등)에서 직접형광항...\", \"dept\": \"감염병관리과, 세균분석과(진단)\", \"guidelineGroup\": \"호흡기감염병 관리지침\", \"guidelineKeyword\": \"호흡기감염병\", \"latestTitle\": \"호흡기감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제3급-7\", \"group\": \"3급\", \"name\": \"비브리오패혈증(Vibrio vulnificus sepsis)\", \"scope\": \"환자, 의사환자\", \"deadline\": \"24시간 이내 신고\", \"lab\": \"○ 검체(혈액, 대변, 소변, 직장도말, 구토물, 수포액, 조직)에서 V. vulnificus 분리 동정\", \"dept\": \"감염병관리과, 세균분석과(진단)\", \"guidelineGroup\": \"수인성 및 식품매개감염병 관리지침\", \"guidelineKeyword\": \"수인성\", \"latestTitle\": \"수인성 및 식품매개감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제3급-8\", \"group\": \"3급\", \"name\": \"발진티푸스(Epidemic typhus)\", \"scope\": \"환자, 의사환자\", \"deadline\": \"24시간 이내 신고\", \"lab\": \"○ 검체(혈액, 피부조직)에서 R. prowazekii 분리 동정 ○ 회복기 혈청의 항체가가 급성기에 비하여 4배 이상 증가 ○ 검체(혈액, 피부조직)에서 특이 유전자 검출\", \"dept\": \"인수공통감염병관리과, 세균분석과(진단)\", \"guidelineGroup\": \"진드기·설치류 매개 감염병 관리지침\", \"guidelineKeyword\": \"진드기\", \"latestTitle\": \"진드기·설치류 매개 감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제3급-9\", \"group\": \"3급\", \"name\": \"발진열(Murine typhus)\", \"scope\": \"환자, 의사환자\", \"deadline\": \"24시간 이내 신고\", \"lab\": \"○ 검체(혈액, 피부조직)에서 R. typhi 분리 동정 ○ 회복기 혈청의 항체가가 급성기에 비하여 4배 이상 증가 ○ 검체(혈액, 피부조직)에서 특이 유전자 검출\", \"dept\": \"인수공통감염병관리과, 세균분석과(진단)\", \"guidelineGroup\": \"진드기·설치류 매개 감염병 관리지침\", \"guidelineKeyword\": \"진드기\", \"latestTitle\": \"진드기·설치류 매개 감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제3급-10\", \"group\": \"3급\", \"name\": \"쯔쯔가무시증(Scrub typhus)\", \"scope\": \"환자, 의사환자\", \"deadline\": \"24시간 이내 신고\", \"lab\": \"○ 확인 진단 - 검체(혈액, 조직, 가피)에서 O. tsutsugamushi 분리 동정 - 회복기 혈청의 항체가가 급성기에 비하여 4배 이상 증가 - 검체(혈액, 조직, 가피)에서 특이 유전자 검출 ○ 추정 진단 - 검체(혈액)에서 특이 항체 검출\", \"dept\": \"인수공통감염병관리과, 세균분석과(진단)\", \"guidelineGroup\": \"진드기·설치류 매개 감염병 관리지침\", \"guidelineKeyword\": \"진드기\", \"latestTitle\": \"진드기·설치류 매개 감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제3급-11\", \"group\": \"3급\", \"name\": \"렙토스피라증(Leptospirosis)\", \"scope\": \"환자, 의사환자\", \"deadline\": \"24시간 이내 신고\", \"lab\": \"○ 확인 진단 - 검체(혈액, 소변, 뇌척수액, 조직)에서 렙토스피라균 분리 동정 - 회복기 혈청의 항체가가 급성기에 비하여 4배 이상 증가 - 현미경응집법으로 혈청의 단일항체가가 1:800 이상 - 검체(혈액, 소변, 뇌척수액, 조직)에서 특이 유전자 검출 ○ 추정 진단 - 현미경응집법으로 혈청의 단일항체가가 1:200 이상 ∼ 1...\", \"dept\": \"인수공통감염병관리과, 세균분석과(진단)\", \"guidelineGroup\": \"진드기·설치류 매개 감염병 관리지침\", \"guidelineKeyword\": \"진드기\", \"latestTitle\": \"진드기·설치류 매개 감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제3급-12\", \"group\": \"3급\", \"name\": \"브루셀라증(Brucellosis)\", \"scope\": \"환자, 의사환자\", \"deadline\": \"24시간 이내 신고\", \"lab\": \"○ 확인 진단 - 검체(혈액, 골수, 관절액, 조직 등)에서 브루셀라균 분리 동정 - 회복기 혈청의 항체가가 급성기에 비하여 4배 이상 증가 ○ 추정 진단 - 급성기 혈청에서 미세응집법으로 항체가 1:160 이상 - 검체(혈액, 골수, 관절액, 조직 등)에서 특이 유전자 검출\", \"dept\": \"인수공통감염병관리과, 세균분석과(진단)\", \"guidelineGroup\": \"인수공통감염병 관리지침\", \"guidelineKeyword\": \"인수공통\", \"latestTitle\": \"인수공통감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제3급-13\", \"group\": \"3급\", \"name\": \"공수병(Rabies)\", \"scope\": \"환자, 의사환자\", \"deadline\": \"24시간 이내 신고\", \"lab\": \"○ 검체(타액)에서 Lyssavirus rabies 분리 ○ 검체(목 피부조직, 뇌조직)에서 특이 항원 검출 ○ 검체(혈액, 뇌척수액)에서 특이 항체 검출 ○ 검체(타액, 목 피부조직, 뇌조직)에서 특이 유전자 검출\", \"dept\": \"인수공통감염병관리과, 바이러스분석과(진단)\", \"guidelineGroup\": \"인수공통감염병 관리지침\", \"guidelineKeyword\": \"인수공통\", \"latestTitle\": \"인수공통감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제3급-14\", \"group\": \"3급\", \"name\": \"신증후군출혈열(유행성출혈열) (Hemorrhagic Fever with Renal Syndrome)\", \"scope\": \"환자, 의사환자\", \"deadline\": \"24시간 이내 신고\", \"lab\": \"○ 확인 진단 - 회복기 혈청의 항체가가 급성기에 비하여 4배 이상 증가 - 검체(혈액)에서 특이 IgM 항체 검출 - 예방접종을 받지 않은 자 중에 간접면역형광항체법으로 항체가가 1:512 이상 - 검체(혈액, 뇌척수액)에서 특이 유전자 검출 ○ 추정 진단 - 예방접종을 받은 자 중에 간접면역형광항체법으로 특이 IgG 항체 검출 -...\", \"dept\": \"인수공통감염병관리과, 바이러스분석과(진단)\", \"guidelineGroup\": \"진드기·설치류 매개 감염병 관리지침\", \"guidelineKeyword\": \"진드기\", \"latestTitle\": \"진드기·설치류 매개 감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제3급-15\", \"group\": \"3급\", \"name\": \"후천성면역결핍증(AIDS)\", \"scope\": \"환자, 병원체보유자\", \"deadline\": \"24시간 이내 신고\", \"lab\": \"○ 생후 18개월 미만인 자 - 검체(혈액)에서 p24 특이 항원 검출이면서 항원중화검사 양성 - 검체(혈액)에서 특이 유전자 검출 ○ 생후 18개월 이상인 자 - 검체(혈액)에서 특이 항체 검출(웨스턴블롯법으로 양성인 경우) - 검체(혈액)에서 p24 특이 항원 검출이면서 항원중화검사에서 양성 - 검체(혈액)에서 특이 유전자 검출\", \"dept\": \"에이즈관리과, 바이러스분석과(진단)\", \"guidelineGroup\": \"HIV/AIDS 관리지침\", \"guidelineKeyword\": \"HIV\", \"latestTitle\": \"HIV/AIDS 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제3급-16\", \"group\": \"3급\", \"name\": \"크로이츠펠트-야콥병(Creutzfeldt-Jakob disease) 및 변종크로이츠펠트-야콥병 (vCJD)\", \"scope\": \"환자, 의사환자, 병원체보유자\", \"deadline\": \"24시간 이내 신고\", \"lab\": \"신경병리·면역조직화학(IHC)·뇌척수액 14-3-3/RT-QuIC·PRNP 유전자 변이·뇌파/MRI 기준\", \"dept\": \"인수공통감염병관리과, 세균분석과(진단)\", \"guidelineGroup\": \"인수공통감염병 관리지침\", \"guidelineKeyword\": \"인수공통\", \"latestTitle\": \"인수공통감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제3급-17\", \"group\": \"3급\", \"name\": \"황열(Yellow fever)\", \"scope\": \"환자, 의사환자, 병원체보유자\", \"deadline\": \"24시간 이내 신고\", \"lab\": \"○ 확인진단 - 검체(혈액)에서 Yellow fever virus 분리 - 회복기 혈청의 항체가가 급성기에 비하여 4배 이상 증가 - 검체(혈액)에서 특이 유전자 검출 ○ 추정진단 - 검체(혈액)에서 특이 IgM 항체 검출\", \"dept\": \"인수공통감염병관리과, 바이러스분석과(진단)\", \"guidelineGroup\": \"모기매개감염병 관리지침\", \"guidelineKeyword\": \"모기매개\", \"latestTitle\": \"모기매개감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제3급-18\", \"group\": \"3급\", \"name\": \"뎅기열(Dengue fever)\", \"scope\": \"환자, 의사환자, 병원체보유자\", \"deadline\": \"24시간 이내 신고\", \"lab\": \"○ 확인 진단 - 검체(혈액, 뇌척수액)에서 Dengue virus 분리 - 검체(혈액)에서 특이 항원 검출 - 회복기 혈청의 항체가가 급성기에 비하여 4배 이상 증가 - 검체(혈액, 뇌척수액 등)에서 특이 유전자 검출 ○ 추정 진단 - 검체(혈액, 뇌척수액)에서 특이 IgM 항체 검출\", \"dept\": \"인수공통감염병관리과, 바이러스분석과(진단)\", \"guidelineGroup\": \"모기매개감염병 관리지침\", \"guidelineKeyword\": \"모기매개\", \"latestTitle\": \"모기매개감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제3급-19\", \"group\": \"3급\", \"name\": \"큐열(Q fever)\", \"scope\": \"환자, 의사환자\", \"deadline\": \"24시간 이내 신고\", \"lab\": \"○ 확인 진단 - 검체(혈액, 조직)에서 C. burnetii 분리동정 - 급성 큐열 : 회복기 혈청의 항체가가 급성기에 비하여 4배 이상 증가(큐열균 phase Ⅱ 항원에 대한 특이항체) - 만성 큐열 : 간접면역형광항체법으로 측정한 phase Ⅰ 항원에 대한 특이 IgG 단일항체가가 1:800 이상이면서 phase Ⅰ항원에 대한 ...\", \"dept\": \"인수공통감염병관리과, 세균분석과(진단)\", \"guidelineGroup\": \"인수공통감염병 관리지침\", \"guidelineKeyword\": \"인수공통\", \"latestTitle\": \"인수공통감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제3급-20\", \"group\": \"3급\", \"name\": \"웨스트나일열(West Nile fever)\", \"scope\": \"환자, 의사환자, 병원체보유자\", \"deadline\": \"24시간 이내 신고\", \"lab\": \"○ 확인 진단 - 검체(혈액, 뇌척수액, 조직)에서 West Nile virus 분리 - 회복기 혈청의 항체가가 급성기에 비하여 4배 이상 증가 - 검체(혈액, 뇌척수액, 조직)에서 특이 유전자 검출 ○ 추정진단 - 검체(혈액, 뇌척수액)에서 특이 IgM 항체 검출\", \"dept\": \"인수공통감염병관리과, 바이러스분석과(진단)\", \"guidelineGroup\": \"모기매개감염병 관리지침\", \"guidelineKeyword\": \"모기매개\", \"latestTitle\": \"모기매개감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제3급-21\", \"group\": \"3급\", \"name\": \"라임병(Lyme Borreliosis)\", \"scope\": \"환자, 의사환자\", \"deadline\": \"24시간 이내 신고\", \"lab\": \"○ 확인 진단 - 검체(혈액, 뇌척수액, 피부생검조직)에서 보렐리아속균 분리 동정 - 검체(혈액, 뇌척수액)에서 간접면역형광항체법(또는 ELISA)과 웨스턴블럿법으로 특이 항체 검출 ○ 추정 진단 - 검체(혈액, 뇌척수액, 피부생검조직)에서 간접면역형광항체법(또는 ELISA) 또는 웨스턴블럿법으로 특이 항체 검출\", \"dept\": \"인수공통감염병관리과, 세균분석과(진단)\", \"guidelineGroup\": \"진드기·설치류 매개 감염병 관리지침\", \"guidelineKeyword\": \"진드기\", \"latestTitle\": \"진드기·설치류 매개 감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제3급-22\", \"group\": \"3급\", \"name\": \"진드기매개뇌염(Tick-borne Encephalitis)\", \"scope\": \"환자, 의사환자\", \"deadline\": \"24시간 이내 신고\", \"lab\": \"○ 확인 진단 - 검체(혈액, 뇌척수액)에서 Tick-borne encephalitis virus 분리 - 회복기 혈청의 항체가가 급성기에 비해 4배 이상 증가 - 검체(혈액, 뇌척수액)에서 특이 유전자 검출 ○ 추정 진단 - 검체(혈액, 뇌척수액)에서 특이 IgM 항체 검출\", \"dept\": \"인수공통감염병관리과, 바이러스분석과(진단)\", \"guidelineGroup\": \"진드기·설치류 매개 감염병 관리지침\", \"guidelineKeyword\": \"진드기\", \"latestTitle\": \"진드기·설치류 매개 감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제3급-23\", \"group\": \"3급\", \"name\": \"유비저(Melioidosis)\", \"scope\": \"환자, 의사환자\", \"deadline\": \"24시간 이내 신고\", \"lab\": \"○ 검체(혈액, 소변, 가래, 농양 등)에서 B. pseudomallei 분리 동정\", \"dept\": \"인수공통감염병관리과, 고위험병원체분석과(진단)\", \"guidelineGroup\": \"인수공통감염병 관리지침\", \"guidelineKeyword\": \"인수공통\", \"latestTitle\": \"인수공통감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제3급-24\", \"group\": \"3급\", \"name\": \"치쿤구니야열(Chikungunya fever)\", \"scope\": \"환자, 병원체보유자\", \"deadline\": \"24시간 이내 신고\", \"lab\": \"○ 검체(혈액)에서 Chikungunya virus 분리 ○ 회복기 혈청의 항체가가 급성기에 비해 4배 이상 증가 ○ 검체(혈액)에서 특이 IgM 항체 검출 ○ 검체(혈액)에서 특이 유전자 검출\", \"dept\": \"인수공통감염병관리과, 바이러스분석과(진단)\", \"guidelineGroup\": \"모기매개감염병 관리지침\", \"guidelineKeyword\": \"모기매개\", \"latestTitle\": \"모기매개감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제3급-25\", \"group\": \"3급\", \"name\": \"중증열성혈소판감소증후군 (Severe Fever with Thrombocytopenia Syndrome: SFTS)\", \"scope\": \"환자, 의사환자\", \"deadline\": \"24시간 이내 신고\", \"lab\": \"○ 검체(혈액)에서 중증열성혈소판감소증후군 바이러스 분리 ○ 회복기 혈청의 항체가가 급성기에 비하여 4배 이상 증가 ○ 검체(혈액)에서 특이 IgM 항체 검출 ○ 검체(혈액)에서 특이 유전자 검출\", \"dept\": \"인수공통감염병관리과, 바이러스분석과(진단)\", \"guidelineGroup\": \"진드기·설치류 매개 감염병 관리지침\", \"guidelineKeyword\": \"진드기\", \"latestTitle\": \"진드기·설치류 매개 감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제3급-26\", \"group\": \"3급\", \"name\": \"지카바이러스 감염증(Zika virus infection)\", \"scope\": \"환자, 의사환자, 병원체보유자\", \"deadline\": \"24시간 이내 신고\", \"lab\": \"○ 확인 진단 - 검체(혈액, 소변 등)에서 Zika virus 분리 - 회복기 혈청의 항체가가 급성기에 비하여 4배 이상 증가 - 검체(혈액, 소변 등)에서 특이 유전자 검출 ○ 추정 진단 - 검체(혈액)에서 특이 IgM 항체 검출\", \"dept\": \"인수공통감염병관리과, 바이러스분석과(진단)\", \"guidelineGroup\": \"모기매개감염병 관리지침\", \"guidelineKeyword\": \"모기매개\", \"latestTitle\": \"모기매개감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제3급-27\", \"group\": \"3급\", \"name\": \"엠폭스(MPOX)\", \"scope\": \"환자, 의사환자\", \"deadline\": \"24시간 이내 신고\", \"lab\": \"○ 검체(피부병변액, 피부병변조직, 가피, 구인두도말, 혈액 등)에서 특이 유전자 검출\", \"dept\": \"에이즈관리과, 고위험병원체분석과(진단)\", \"guidelineGroup\": \"엠폭스 대응지침\", \"guidelineKeyword\": \"엠폭스\", \"latestTitle\": \"엠폭스 대응지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제3급-28\", \"group\": \"3급\", \"name\": \"매독(Syphilis)\", \"scope\": \"환자, 병원체보유자\", \"deadline\": \"24시간 이내 신고\", \"lab\": \"○ 1기ㆍ2기ㆍ3기 매독 및 조기 잠복 매독 - 검체(경성하감 또는 편평콘딜롬과 같은 피부병변조직, 궤양부위 삼출액(농, 진물))에서 암시야현미경 검사로 매독균 검출 - 검체(혈액, 뇌척수액)에서 트레포네마검사 및 비트레포네마검사 모두 양성 - 검체(경성하감 또는 편평콘딜롬과 같은 피부병변조직, 궤양부위 삼출액(농, 진물), 혈액)에...\", \"dept\": \"에이즈관리과, 세균분석과(진단)\", \"guidelineGroup\": \"성매개감염병 관리지침\", \"guidelineKeyword\": \"성매개감염병\", \"latestTitle\": \"성매개감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제4급-1\", \"group\": \"4급\", \"name\": \"인플루엔자(Influenza)\", \"scope\": \"환자, 의사환자\", \"deadline\": \"7일 이내 신고(매주 화요일까지)\", \"lab\": \"○ 검체(구인두도말, 비인두도말, 비인두흡입물, 비강흡입물, 기관지폐포세척액, 가래)에서 특이 유전자 검출\", \"dept\": \"감염병관리과, 신종병원체분석과(진단)\", \"guidelineGroup\": \"호흡기감염병 관리지침\", \"guidelineKeyword\": \"호흡기감염병\", \"latestTitle\": \"호흡기감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제4급-2\", \"group\": \"4급\", \"name\": \"회충증(Ascariasis)\", \"scope\": \"환자\", \"deadline\": \"7일 이내 신고\", \"lab\": \"○ 검체(대변)에서 충란 확인 ○ 감염부위에서 충체 확인\", \"dept\": \"인수공통감염병관리과, 매개체분석과(진단)\", \"guidelineGroup\": \"기생충감염병 관리지침\", \"guidelineKeyword\": \"기생충\", \"latestTitle\": \"기생충감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제4급-3\", \"group\": \"4급\", \"name\": \"편충증(Trichuriasis)\", \"scope\": \"환자\", \"deadline\": \"7일 이내 신고\", \"lab\": \"○ 검체(대변)에서 충란 확인 ○ 감염부위에서 충체 확인\", \"dept\": \"인수공통감염병관리과, 매개체분석과(진단)\", \"guidelineGroup\": \"기생충감염병 관리지침\", \"guidelineKeyword\": \"기생충\", \"latestTitle\": \"기생충감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제4급-4\", \"group\": \"4급\", \"name\": \"요충증(Enterobiasis)\", \"scope\": \"환자\", \"deadline\": \"7일 이내 신고\", \"lab\": \"○ 검체(항문주위도말)에서 충란 및 충체 확인 ○ 항문주위와 여성의 질에서 충체 확인\", \"dept\": \"인수공통감염병관리과, 매개체분석과(진단)\", \"guidelineGroup\": \"기생충감염병 관리지침\", \"guidelineKeyword\": \"기생충\", \"latestTitle\": \"기생충감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제4급-5\", \"group\": \"4급\", \"name\": \"간흡충증(Clonorchiasis)\", \"scope\": \"환자\", \"deadline\": \"7일 이내 신고\", \"lab\": \"○ 검체(대변)에서 충란 확인 ○ 감염부위에서 충체 확인\", \"dept\": \"인수공통감염병관리과, 매개체분석과(진단)\", \"guidelineGroup\": \"기생충감염병 관리지침\", \"guidelineKeyword\": \"기생충\", \"latestTitle\": \"기생충감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제4급-6\", \"group\": \"4급\", \"name\": \"폐흡충증(Paragonimiasis)\", \"scope\": \"환자\", \"deadline\": \"7일 이내 신고\", \"lab\": \"○ 검체(대변, 가래)에서 충란 확인\", \"dept\": \"인수공통감염병관리과, 매개체분석과(진단)\", \"guidelineGroup\": \"기생충감염병 관리지침\", \"guidelineKeyword\": \"기생충\", \"latestTitle\": \"기생충감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제4급-7\", \"group\": \"4급\", \"name\": \"장흡충증(Intestinal fluke infections)\", \"scope\": \"환자\", \"deadline\": \"7일 이내 신고\", \"lab\": \"○ 검체(대변)에서 충란 및 충체 확인\", \"dept\": \"인수공통감염병관리과, 매개체분석과(진단)\", \"guidelineGroup\": \"기생충감염병 관리지침\", \"guidelineKeyword\": \"기생충\", \"latestTitle\": \"기생충감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제4급-8\", \"group\": \"4급\", \"name\": \"수족구병(Hand, foot and mouth disease)\", \"scope\": \"환자, 의사환자\", \"deadline\": \"7일 이내 신고\", \"lab\": \"○ 검체(대변, 직장도말, 뇌척수액, 혈액, 구인두도말, 비인두도말, 비강세척액 등)에서 특이 유전자 검출\", \"dept\": \"감염병관리과, 바이러스분석과(진단)\", \"guidelineGroup\": \"엔테로바이러스·수족구병 관리지침\", \"guidelineKeyword\": \"엔테로바이러스\", \"latestTitle\": \"엔테로바이러스·수족구병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제4급-9\", \"group\": \"4급\", \"name\": \"임질(Gonorrhea)\", \"scope\": \"환자, 의사환자\", \"deadline\": \"7일 이내 신고\", \"lab\": \"○ 검체(남성의 요도도말)에서 세포 내 그람음성 쌍알균 현미경 검사 ○ 검체(요도·자궁경부·직장·인두도말, 결막, 혈액, 관절액)에서 N. gonorrhoeae 분리 동정 ○ 검체(요도·자궁경부·직장·인두도말, 첫 소변, 척수액, 관절액)에서 특이 항원 검출 ○ 검체(자궁경부·질도말, 첫 소변)에서 특이 유전자 검출\", \"dept\": \"에이즈관리과, 세균분석과(진단)\", \"guidelineGroup\": \"성매개감염병 관리지침\", \"guidelineKeyword\": \"성매개감염병\", \"latestTitle\": \"성매개감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제4급-10\", \"group\": \"4급\", \"name\": \"클라미디아감염증(Chlamydial infection)\", \"scope\": \"환자\", \"deadline\": \"7일 이내 신고\", \"lab\": \"○ 검체(요도·자궁경부·직장·인두도말)에서 C. trachomatis 분리 동정 ○ 검체(요도·자궁경부·직장·인두도말, 첫 소변)에서 특이 항원 검출 ○ 검체(질도말, 첫 소변 등)에서 특이 유전자 검출\", \"dept\": \"에이즈관리과, 세균분석과(진단)\", \"guidelineGroup\": \"성매개감염병 관리지침\", \"guidelineKeyword\": \"성매개감염병\", \"latestTitle\": \"성매개감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제4급-11\", \"group\": \"4급\", \"name\": \"연성하감(Chancroid)\", \"scope\": \"환자\", \"deadline\": \"7일 이내 신고\", \"lab\": \"○ 검체(병변의 분비물, 궤양부위 삼출물)에서 H. ducreyi 분리 동정 ○ 검체(병변의 분비물, 궤양부위 삼출물)에서 특이 유전자 검출\", \"dept\": \"에이즈관리과, 세균분석과(진단)\", \"guidelineGroup\": \"성매개감염병 관리지침\", \"guidelineKeyword\": \"성매개감염병\", \"latestTitle\": \"성매개감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제4급-12\", \"group\": \"4급\", \"name\": \"성기단순포진(Genital herpes)\", \"scope\": \"환자, 의사환자\", \"deadline\": \"7일 이내 신고\", \"lab\": \"○ 검체(수포나 궤양 병변 등에서 나오는 분비물, 궤양부위도말)에서 Simplexvirus humanalpha2 또는 Simplexvirus humanalpha1 분리 ○ 검체(혈액, 수포나 궤양 병변 등에서 나오는 분비물, 궤양부위도말)에서 특이 항체 검출 ○ 검체(혈액, 수포나 궤양 병변 등에서 나오는 분비물, 궤양부위도말)에서 ...\", \"dept\": \"에이즈관리과, 바이러스분석과(진단)\", \"guidelineGroup\": \"성매개감염병 관리지침\", \"guidelineKeyword\": \"성매개감염병\", \"latestTitle\": \"성매개감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제4급-13\", \"group\": \"4급\", \"name\": \"첨규콘딜롬(Condyloma acuminata)\", \"scope\": \"환자, 의사환자\", \"deadline\": \"7일 이내 신고\", \"lab\": \"○ 검체(병변조직, 자궁경부세포)에서 Human papillomavirus 감염에 합당한 조직·병리학적 변화 확인 ○ 검체(병변조직, 자궁경부세포)에서 특이 유전자 검출\", \"dept\": \"에이즈관리과, 바이러스분석과(진단)\", \"guidelineGroup\": \"성매개감염병 관리지침\", \"guidelineKeyword\": \"성매개감염병\", \"latestTitle\": \"성매개감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제4급-14\", \"group\": \"4급\", \"name\": \"반코마이신내성장알균(VRE) 감염증\", \"scope\": \"환자, 병원체보유자\", \"deadline\": \"7일 이내 신고\", \"lab\": \"임상검체 Enterococcus 중 Vancomycin MIC ≥32 µg/mL(≤14mm) 내성 확인 또는 vanA/vanB 유전자 검출 (혈액=환자, 혈액외=보유자)\", \"dept\": \"의료감염관리과, 세균분석과(진단)\", \"guidelineGroup\": \"의료관련감염병 관리지침\", \"guidelineKeyword\": \"의료관련감염병\", \"latestTitle\": \"의료관련감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제4급-15\", \"group\": \"4급\", \"name\": \"메티실린내성황색포도알균(MRSA) 감염증\", \"scope\": \"환자, 병원체보유자\", \"deadline\": \"7일 이내 신고\", \"lab\": \"임상검체 S. aureus 중 Oxacillin MIC ≥4 또는 Cefoxitin MIC ≥8 µg/mL(≤21mm) 내성 확인 또는 mecA 유전자 검출\", \"dept\": \"의료감염관리과, 세균분석과(진단)\", \"guidelineGroup\": \"의료관련감염병 관리지침\", \"guidelineKeyword\": \"의료관련감염병\", \"latestTitle\": \"의료관련감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제4급-16\", \"group\": \"4급\", \"name\": \"다제내성녹농균(MRPA) 감염증\", \"scope\": \"환자, 병원체보유자\", \"deadline\": \"7일 이내 신고\", \"lab\": \"임상검체 P. aeruginosa 중 카바페넴계·아미노글리코사이드계·플루오로퀴놀론계 3개 계열 모두 내성 확인\", \"dept\": \"의료감염관리과, 세균분석과(진단)\", \"guidelineGroup\": \"의료관련감염병 관리지침\", \"guidelineKeyword\": \"의료관련감염병\", \"latestTitle\": \"의료관련감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제4급-17\", \"group\": \"4급\", \"name\": \"다제내성아시네토박터바우마니균(MRAB) 감염증\", \"scope\": \"환자, 병원체보유자\", \"deadline\": \"7일 이내 신고\", \"lab\": \"임상검체 A. baumannii 중 카바페넴계·아미노글리코사이드계·플루오로퀴놀론계 3개 계열 모두 내성 확인\", \"dept\": \"의료감염관리과, 세균분석과(진단)\", \"guidelineGroup\": \"의료관련감염병 관리지침\", \"guidelineKeyword\": \"의료관련감염병\", \"latestTitle\": \"의료관련감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제4급-18\", \"group\": \"4급\", \"name\": \"장관감염증\", \"scope\": \"환자\", \"deadline\": \"7일 이내 신고\", \"lab\": \"세균 11종(살모넬라·장염비브리오·ETEC/EIEC/EPEC·캄필로박터 등)·바이러스 5종(로타·노로 등)·원충 4종 분리동정 또는 특이유전자/항원 검출\", \"dept\": \"감염병관리과\", \"guidelineGroup\": \"수인성 및 식품매개감염병 관리지침\", \"guidelineKeyword\": \"수인성\", \"latestTitle\": \"수인성 및 식품매개감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제4급-19\", \"group\": \"4급\", \"name\": \"급성호흡기감염증\", \"scope\": \"환자\", \"deadline\": \"7일 이내 신고\", \"lab\": \"바이러스 7종(아데노·보카·파라인플루엔자·RSV·리노·hMPV·사람코로나) 및 세균 2종(마이코플라스마·클라미디아 폐렴균) 분리 또는 특이유전자 검출\", \"dept\": \"감염병관리과\", \"guidelineGroup\": \"호흡기감염병 관리지침\", \"guidelineKeyword\": \"호흡기감염병\", \"latestTitle\": \"호흡기감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제4급-20\", \"group\": \"4급\", \"name\": \"해외유입기생충감염증\", \"scope\": \"환자\", \"deadline\": \"7일 이내 신고\", \"lab\": \"해외유입 기생충 11종(리슈만편모충·바베스열원충·아프리카수면병·주혈흡충·샤가스병·포충·톡소포자충 등) 충체·충란 확인 또는 특이유전자/항체 검출\", \"dept\": \"인수공통감염병관리과\", \"guidelineGroup\": \"기생충감염병 관리지침\", \"guidelineKeyword\": \"기생충\", \"latestTitle\": \"기생충감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제4급-21\", \"group\": \"4급\", \"name\": \"엔테로바이러스감염증(Enterovirus infection)\", \"scope\": \"환자\", \"deadline\": \"7일 이내 신고\", \"lab\": \"○ 검체(대변, 직장도말, 뇌척수액, 혈액, 구인두도말, 비인두도말, 비강세척액)에서 특이 유전자 검출\", \"dept\": \"감염병관리과, 바이러스분석과(진단)\", \"guidelineGroup\": \"엔테로바이러스·수족구병 관리지침\", \"guidelineKeyword\": \"엔테로바이러스\", \"latestTitle\": \"엔테로바이러스·수족구병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제4급-22\", \"group\": \"4급\", \"name\": \"사람유두종바이러스 감염증(Human papillomavirus infection)\", \"scope\": \"병원체보유자\", \"deadline\": \"7일 이내 신고\", \"lab\": \"○ 검체(자궁경부 또는 성기 부위의 병변조직이나 도말물)에서 HPV 특이 유전형 검출 - HPV 특이 유전형 : 16, 18, 31, 33, 35, 39, 45, 51, 52, 56, 58, 59, 68 ※ HPV 특이 유전형에 대한 기준은 IARC 분류 기준(Group 1, Group 2A)에 근거\", \"dept\": \"에이즈관리과, 바이러스분석과(진단)\", \"guidelineGroup\": \"성매개감염병 관리지침\", \"guidelineKeyword\": \"성매개감염병\", \"latestTitle\": \"성매개감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제4급-23\", \"group\": \"4급\", \"name\": \"코로나바이러스감염증-19(COVID-19)\", \"scope\": \"환자\", \"deadline\": \"7일 이내 신고\", \"lab\": \"○ 검체(비인두도말, 구인두도말, 가래 등)에서 특이유전자 검출\", \"dept\": \"감염병관리과, 신종병원체분석과(진단)\", \"guidelineGroup\": \"호흡기감염병 관리지침\", \"guidelineKeyword\": \"호흡기감염병\", \"latestTitle\": \"호흡기감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"제4급-24\", \"group\": \"4급\", \"name\": \"칸디다 오리스 감염증(Candida auris infection)\", \"scope\": \"환자, 병원체보유자\", \"deadline\": \"7일 이내 신고\", \"lab\": \"검체(귀 검체 제외, 혈액·소변·감시배양 포함)에서 Candida auris 분리 동정 (2026.3.29. 제4급 신규 지정)\", \"dept\": \"의료감염관리과, 세균분석과(진단)\", \"guidelineGroup\": \"의료관련감염병 관리지침\", \"guidelineKeyword\": \"의료관련감염병\", \"latestTitle\": \"의료관련감염병 관리지침 (KDCA 지침 게시판 확인)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"공통-1\", \"group\": \"공통·검사실\", \"name\": \"법정감염병 진단·신고기준 (2026.5 고시 제2026-4호)\", \"scope\": \"전 의료기관 · 병원체 확인기관\", \"deadline\": \"상시 기준 (매년/고시 개정 시)\", \"lab\": \"1~4급 법정감염병 91종(2026.3.29. 제4급 칸디다 오리스 감염증 신설 반영) 신고범위·진단검사기준·표본감시 기준 총괄\", \"dept\": \"감염병관리과\", \"guidelineGroup\": \"법정감염병 진단·신고기준\", \"guidelineKeyword\": \"법정감염병 진단\", \"latestTitle\": \"2026 법정감염병 진단·신고기준 (2026.05)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"공통-2\", \"group\": \"공통·검사실\", \"name\": \"법정감염병 진단검사 통합지침\", \"scope\": \"진단검사의학과 · 보건환경연구원\", \"deadline\": \"상시 기준 (개정 시 갱신)\", \"lab\": \"법정감염병별 검체 채취·보관·운송, 확인진단 표준시험법(배양·PCR·혈청검사) 및 확인기관 의뢰 절차\", \"dept\": \"진단분석국(세균·바이러스·고위험병원체분석과)\", \"guidelineGroup\": \"법정감염병 진단검사 통합지침\", \"guidelineKeyword\": \"진단검사 통합지침\", \"latestTitle\": \"법정감염병 진단검사 통합지침 (KDCA 지침 게시판)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"공통-3\", \"group\": \"공통·검사실\", \"name\": \"의료관련감염 표준예방지침 및 집단발생 대응 안내\", \"scope\": \"전 의료기관 · 감염관리실\", \"deadline\": \"상시 기준 (개정 시 갱신)\", \"lab\": \"손위생·표준주의·전파경로별 주의·환경소독·삽입기구 감염예방 및 다제내성균(CRE·C. auris 등) 집단발생 대응 매뉴얼\", \"dept\": \"의료감염관리과\", \"guidelineGroup\": \"의료관련감염 표준예방지침\", \"guidelineKeyword\": \"표준예방지침\", \"latestTitle\": \"의료관련감염 표준예방지침 · 집단발생 대응 안내\", \"latestYear\": \"2025\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"공통-4\", \"group\": \"공통·검사실\", \"name\": \"칸디다 오리스(Candida auris) 의료기관 감염관리 권고안\", \"scope\": \"종합병원 · 감염관리실 · 미생물검사실\", \"deadline\": \"수시 개정 (2026년 4급 신설)\", \"lab\": \"선제 감시배양·접촉자 검사·격리해제 기준·환경소독 및 MALDI-TOF/분자동정 확인 권고사항\", \"dept\": \"의료감염관리과\", \"guidelineGroup\": \"칸디다 오리스 의료기관 감염관리 권고안\", \"guidelineKeyword\": \"칸디다 오리스\", \"latestTitle\": \"칸디다 오리스(C. auris) 의료기관 감염관리 권고안 (2026)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"공통-5\", \"group\": \"공통·검사실\", \"name\": \"감염성물질 안전수송 지침\", \"scope\": \"검체 채취·수송·의뢰 기관\", \"deadline\": \"상시 기준\", \"lab\": \"카테고리 A(UN2814)·카테고리 B(UN3373) 3중 포장 기준, 4℃ 냉장·-70℃ 드라이아이스 수송 및 고위험병원체 이동 신고 절차\", \"dept\": \"생물안전평가과\", \"guidelineGroup\": \"감염성물질 안전수송 지침\", \"guidelineKeyword\": \"안전수송\", \"latestTitle\": \"감염성물질 안전수송 지침 (KDCA 지침 게시판)\", \"latestYear\": \"2025\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"공통-6\", \"group\": \"공통·검사실\", \"name\": \"실험실 생물안전지침 및 고위험병원체 취급·보존 관리지침\", \"scope\": \"BL2/BL3 검사실 · 고위험병원체 취급기관\", \"deadline\": \"상시 기준\", \"lab\": \"고위험병원체(세균·진균 14종, 바이러스·프리온 24종) 분리신고·이동신고·보존관리 및 생물안전작업대(BSC) 운영 기준\", \"dept\": \"생물안전평가과\", \"guidelineGroup\": \"실험실 생물안전지침\", \"guidelineKeyword\": \"생물안전\", \"latestTitle\": \"실험실 생물안전지침 · 고위험병원체 관리 안내\", \"latestYear\": \"2025\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"공통-7\", \"group\": \"공통·검사실\", \"name\": \"의료기관 항생제 적정사용 관리(ASP) 지침\", \"scope\": \"종합병원 · ASP팀 · 진단검사의학과\", \"deadline\": \"상시 기준\", \"lab\": \"원내 항생제 사용량(DOT/DDD) 모니터링, 누적 항생제 감수성(Antibiogram) 작성·환류 및 선택적 보고(Cascade reporting) 연계\", \"dept\": \"항생제내성관리과\", \"guidelineGroup\": \"항생제 적정사용 관리 지침\", \"guidelineKeyword\": \"항생제 적정사용\", \"latestTitle\": \"의료기관 항생제 적정사용 관리(ASP) 지침\", \"latestYear\": \"2025\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}, {\"code\": \"공통-8\", \"group\": \"공통·검사실\", \"name\": \"감염병 감시체계(전수·표본감시) 운영 지침\", \"scope\": \"전 의료기관 · 표본감시기관\", \"deadline\": \"매년 개정\", \"lab\": \"전수감시(1~3급) 및 표본감시(4급 24종·호흡기/장관/HAI) 신고 서식, 방역통합정보시스템(eid.kdca.go.kr) 보고 절차\", \"dept\": \"감염병관리과 · 감염병정보과\", \"guidelineGroup\": \"감염병 감시체계 운영 지침\", \"guidelineKeyword\": \"표본감시 운영\", \"latestTitle\": \"의료관련감염병 및 법정감염병 감시 운영 지침 (2026)\", \"latestYear\": \"2026\", \"latestUrl\": \"https://www.kdca.go.kr/kdca/2861/subview.do\"}]"
+REFERENCE_STANDARDS_MASTER_JSON = "{\"updatedNote\": \"2026-11-23 공식 홈페이지 기준 검수 (Phase 2에서 주 1회 자동 개정 감지 연동 예정)\", \"clsi_m\": [{\"code\": \"CLSI M100\", \"series\": \"M\", \"title\": \"Performance Standards for Antimicrobial Susceptibility Testing\", \"titleKo\": \"항균제 감수성 검사(AST) 수행 표준 브레이크포인트·QC 표\", \"edition\": \"36th Ed (M100-Ed36)\", \"publishedDate\": \"2026-01-26\", \"status\": \"2026 최신판\", \"note\": \"매년 1~2월 개정. M02·M07·M11과 연계 적용. Salmonella/Shigella 표 재배치 등 반영.\", \"url\": \"https://clsi.org/shop/standards/m100/\"}, {\"code\": \"CLSI M27M44S\", \"series\": \"M\", \"title\": \"Performance Standards for Antifungal Susceptibility Testing of Yeasts\", \"titleKo\": \"효모균(Candida 등) 항진균제 감수성 검사 브레이크포인트·QC 표\", \"edition\": \"4th Ed (M27M44S-Ed4)\", \"publishedDate\": \"2026-03-04\", \"status\": \"2026 최신판\", \"note\": \"M27(액체배지희석법)·M44(디스크확산법) 연계 효모균 최신 판정표.\", \"url\": \"https://clsi.org/shop/standards/m27m44s/\"}, {\"code\": \"CLSI M38M51S\", \"series\": \"M\", \"title\": \"Performance Standards for Antifungal Susceptibility Testing of Filamentous Fungi\", \"titleKo\": \"사상균(Aspergillus 등) 항진균제 감수성 검사 브레이크포인트·QC 표\", \"edition\": \"4th Ed (M38M51S-Ed4)\", \"publishedDate\": \"2026-03-04\", \"status\": \"2026 최신판\", \"note\": \"M38·M51 연계 사상균 MIC/ECV·QC 최신 판정표.\", \"url\": \"https://clsi.org/shop/standards/m38m51s/\"}, {\"code\": \"CLSI M02\", \"series\": \"M\", \"title\": \"Performance Standards for Antimicrobial Disk Susceptibility Tests\", \"titleKo\": \"항균제 디스크 확산법 표준 시험법\", \"edition\": \"14th Ed (M02-Ed14)\", \"publishedDate\": \"2024-03-19\", \"status\": \"현행 유효\", \"note\": \"호기성 세균 디스크 확산법 표준 절차 (M100과 병행 적용).\", \"url\": \"https://clsi.org/shop/standards/m02/\"}, {\"code\": \"CLSI M07\", \"series\": \"M\", \"title\": \"Methods for Dilution Antimicrobial Susceptibility Tests for Bacteria That Grow Aerobically\", \"titleKo\": \"호기성 세균 액체·한천배지 희석법(MIC) 표준 시험법\", \"edition\": \"12th Ed (M07-Ed12)\", \"publishedDate\": \"2024-03-19\", \"status\": \"현행 유효 (2025.05 정오표)\", \"note\": \"액체배지미량희석법(BMD) 표준 기준. 2025년 5월 정오표(Correction Notice) 확인 필요.\", \"url\": \"https://clsi.org/shop/standards/m07/\"}, {\"code\": \"CLSI M11\", \"series\": \"M\", \"title\": \"Methods for Antimicrobial Susceptibility Testing of Anaerobic Bacteria\", \"titleKo\": \"혐기성 세균 항균제 감수성 검사 표준 시험법\", \"edition\": \"9th Ed (M11-Ed9)\", \"publishedDate\": \"2018-10-16\", \"status\": \"현행 유효 (2025.04 재확인)\", \"note\": \"2025년 4월 Reaffirmed. Bacteroides/Parabacteroides BMD 대안법 포함.\", \"url\": \"https://clsi.org/shop/standards/m11/\"}, {\"code\": \"CLSI M24S\", \"series\": \"M\", \"title\": \"Performance Standards for Susceptibility Testing of Mycobacteria, Nocardia spp., and Other Aerobic Actinomycetes\", \"titleKo\": \"항산균(결핵·NTM)·Nocardia 감수성 검사 판정표\", \"edition\": \"2nd Ed (M24S-Ed2)\", \"publishedDate\": \"2023-02-27\", \"status\": \"현행 유효\", \"note\": \"M24 연계 결핵균·비결핵항산균(NTM)·Nocardia 브레이크포인트 및 QC 표.\", \"url\": \"https://clsi.org/shop/standards/m24s/\"}, {\"code\": \"CLSI M45\", \"series\": \"M\", \"title\": \"Methods for Antimicrobial Dilution and Disk Susceptibility Testing of Infrequently Isolated or Fastidious Bacteria\", \"titleKo\": \"드문 분리균·까다로운 세균 감수성 검사 지침\", \"edition\": \"3rd Ed (M45-Ed3)\", \"publishedDate\": \"2016-08-15\", \"status\": \"현행 유효\", \"note\": \"Aeromonas, Bacillus, Campylobacter, Corynebacterium, Pasteurella, Vibrio 등 특수 균종 AST 기준.\", \"url\": \"https://clsi.org/shop/standards/m45/\"}, {\"code\": \"CLSI M58\", \"series\": \"M\", \"title\": \"Methods for the Identification of Cultured Microorganisms Using MALDI-TOF MS\", \"titleKo\": \"MALDI-TOF MS를 이용한 배양 미생물 동정 지침\", \"edition\": \"1st Ed (M58-Ed1)\", \"publishedDate\": \"2017-04-26\", \"status\": \"현행 유효\", \"note\": \"MALDI-TOF MS 동정 검증, 스코어 해석 및 운영·QC 기준.\", \"url\": \"https://clsi.org/shop/standards/m58/\"}, {\"code\": \"CLSI M64\", \"series\": \"M\", \"title\": \"Implementation of Taxonomy Nomenclature Changes\", \"titleKo\": \"미생물 분류학 명명법 변경의 검사실 적용 지침\", \"edition\": \"1st Ed (M64-Ed1)\", \"publishedDate\": \"2024-12-05\", \"status\": \"현행 유효\", \"note\": \"Candidozyma(Candida) auris 등 개정 균종명 LIS 반영·임상 공지 가이드.\", \"url\": \"https://clsi.org/shop/standards/m64/\"}], \"clsi_mm\": [{\"code\": \"CLSI MM06\", \"series\": \"MM\", \"title\": \"Quantitative Molecular Methods for Infectious Diseases\", \"titleKo\": \"감염병 정량 분자진단 검사 지침 (HIV·HBV·HCV·CMV 등)\", \"edition\": \"3rd Ed (MM06-Ed3)\", \"publishedDate\": \"2026-07-22\", \"status\": \"2026 신규 개정\", \"note\": \"2010년 Ed2 이후 16년 만의 전면 개정(2026.07.22 발간). 바이러스 정량 PCR 검증·정도관리 반영.\", \"url\": \"https://clsi.org/shop/standards/mm06/\"}, {\"code\": \"CLSI MM03\", \"series\": \"MM\", \"title\": \"Molecular Diagnostic Methods for Infectious Diseases\", \"titleKo\": \"감염병 분자진단 검사 표준 지침\", \"edition\": \"현행 최신판\", \"publishedDate\": \"공식 페이지 확인\", \"status\": \"현행 유효\", \"note\": \"감염병 핵산증폭검사(NAAT) 전반의 설계·검증·오염방지·정도관리 핵심 기준.\", \"url\": \"https://clsi.org/shop/standards/mm03/\"}, {\"code\": \"CLSI MM17\", \"series\": \"MM\", \"title\": \"Validation and Verification of Multiplex Nucleic Acid Assays\", \"titleKo\": \"다중(Multiplex) 핵산증폭 패널 검사 성능 검증 지침\", \"edition\": \"2nd Ed (MM17-Ed2)\", \"publishedDate\": \"2018-05-31\", \"status\": \"현행 유효\", \"note\": \"호흡기·위장관·뇌수막염 다중 PCR 패널(FilmArray, QIAstat-Dx 등) 분석적 검증·QC 기준.\", \"url\": \"https://clsi.org/shop/standards/mm17/\"}, {\"code\": \"CLSI MM18\", \"series\": \"MM\", \"title\": \"Interpretive Criteria for Identification of Bacteria and Fungi by Targeted DNA Sequencing\", \"titleKo\": \"표적 DNA 염기서열분석(16S rRNA·ITS 등) 세균·진균 동정 판독 기준\", \"edition\": \"2nd Ed (MM18-Ed2)\", \"publishedDate\": \"2018-07-16\", \"status\": \"현행 유효\", \"note\": \"16S rRNA·ITS·D1/D2 시퀀싱 동정 일치율 판정 및 보고 기준.\", \"url\": \"https://clsi.org/shop/standards/mm18/\"}, {\"code\": \"CLSI MM24\", \"series\": \"MM\", \"title\": \"Molecular Methods for Genotyping and Strain Typing of Infectious Organisms\", \"titleKo\": \"감염성 병원체 유전형 분석 및 균주 형별(WGS·MLST) 지침\", \"edition\": \"1st Ed (MM24-Ed1)\", \"publishedDate\": \"2021-09-30\", \"status\": \"현행 유효\", \"note\": \"원내 유행 역학 추적·cgMLST·유전형 분석 분자검사 표준.\", \"url\": \"https://clsi.org/shop/standards/mm24/\"}], \"eucast\": [{\"code\": \"EUCAST Bacteria Breakpoints\", \"series\": \"EUCAST\", \"title\": \"Clinical Breakpoint Tables for Bacteria (MICs & Zone Diameters)\", \"titleKo\": \"EUCAST 세균 임상 브레이크포인트 표 (무료 원문 PDF/XLS)\", \"edition\": \"v16.1 (Dosages v16.0)\", \"publishedDate\": \"2026-06-24 ~ 2026-12-31\", \"status\": \"2026 최신판\", \"note\": \"2026년 6월 v16.1 개정 반영. S / I(Increased exposure) / R 정의 및 ATU 주의.\", \"url\": \"https://www.eucast.org/bacteria/clinical-breakpoints-and-interpretation/clinical-breakpoint-tables/\"}, {\"code\": \"EUCAST Fungi (AFST)\", \"series\": \"EUCAST\", \"title\": \"Clinical Breakpoints & ECOFFs for Fungi (Yeasts, Moulds, Dermatophytes)\", \"titleKo\": \"EUCAST 진균 항진균제 임상 브레이크포인트 및 ECOFF 표\", \"edition\": \"Breakpoints v12.1 / ECOFFs v6.1\", \"publishedDate\": \"2026-04-10 / 2026-04-18\", \"status\": \"2026 최신판\", \"note\": \"Candida auris 신규 브레이크포인트 해석 지침 및 2026년 Voriconazole/Azole rationale 포함.\", \"url\": \"https://www.eucast.org/fungi-afst/clinical-breakpoints-and-interpretation/clinical-breakpoint-table/\"}, {\"code\": \"EUCAST QC Tables\", \"series\": \"EUCAST\", \"title\": \"Quality Control Criteria for Disk Diffusion & MIC (Aerobic/Anaerobic)\", \"titleKo\": \"EUCAST 내부정도관리(QC) 기준표\", \"edition\": \"v16.0\", \"publishedDate\": \"2026-01-01\", \"status\": \"2026 최신판\", \"note\": \"호기성·혐기성 세균 ATCC/NCTC QC 균주 허용 범위.\", \"url\": \"https://www.eucast.org/bacteria/methodology-and-instructions/disk-diffusion-and-quality-control/\"}, {\"code\": \"EUCAST RAST\", \"series\": \"EUCAST\", \"title\": \"Rapid Antimicrobial Susceptibility Testing (RAST) directly from Positive Blood Cultures\", \"titleKo\": \"양성 혈액배양 직접 신속 디스크확산법(RAST) 지침\", \"edition\": \"Method v7.0 / QC v8.0\", \"publishedDate\": \"2026-01-16\", \"status\": \"2026 최신판\", \"note\": \"양성 혈액배양병에서 4·6·8·16-20시간 판독용 신속 AST 기준.\", \"url\": \"https://www.eucast.org/bacteria/rapid-ast-in-blood-culture/methods-and-quality-control/\"}, {\"code\": \"EUCAST Anaerobic Disk\", \"series\": \"EUCAST\", \"title\": \"EUCAST Disk Diffusion Manual for Rapidly Growing Anaerobic Bacteria\", \"titleKo\": \"신속 발육 혐기성 세균 디스크 확산법 매뉴얼\", \"edition\": \"v3.0 (Aerobic Manual v13.0)\", \"publishedDate\": \"2026-06\", \"status\": \"2026 최신판\", \"note\": \"2026년 6월 혐기성 세균 디스크 확산법 매뉴얼 v3.0 개정 반영.\", \"url\": \"https://www.eucast.org/bacteria/methodology-and-instructions/disk-diffusion-and-quality-control/\"}]}"
+
 ROOT_DIR = Path(__file__).resolve().parent.parent
 OUTPUT_JSON_PATH = ROOT_DIR / "docs" / "data" / "dashboard.json"
 
 HTTP = requests.Session()
-HTTP.headers.update({"User-Agent": "ClinicalMicroBriefing/8.2.1 (Academic Surveillance Bot)"})
+HTTP.headers.update({"User-Agent": "ClinicalMicroBriefing/8.3.0 (Academic Surveillance Bot)"})
 
 
 def now_kst() -> datetime.datetime:
@@ -1239,11 +1247,11 @@ def sync_kdca_surveillance_api(ss, kdca_api_key: str, now_str: str) -> Tuple[int
         ss, SHEET_KDCA_SURV, ["updated_at", "period_key", "disease_group", "disease_name", "case_count", "source_op"]
     )
     now_year = now_kst().year
-    years = [str(now_year - 1), str(now_year)]
+    years = [str(now_year - 3), str(now_year - 2), str(now_year - 1), str(now_year)]
     all_records = []
 
     for yr in years:
-        for page_no in range(1, 4):
+        for page_no in range(1, 5):
             items = call_kdca_eid(
                 kdca_api_key,
                 "PeriodBasic01",
@@ -1281,7 +1289,7 @@ def sync_kdca_surveillance_api(ss, kdca_api_key: str, now_str: str) -> Tuple[int
     ws.clear()
     ws.update(range_name="A1", values=header + body, value_input_option="RAW")
     cnt_cur = sum(1 for r in final_list if r["period_key"].startswith(f"{now_year}-"))
-    return len(body), f"{now_year - 1}~{now_year}년 전수감시 {len(body)}건 갱신 ({now_year}년 {cnt_cur}건 포함)"
+    return len(body), f"{now_year - 3}~{now_year}년 전수감시 {len(body)}건 갱신 (3년 동월 기저선 확보, {now_year}년 {cnt_cur}건 포함)"
 
 
 def fetch_kdca_sentinel_weekly(start_date_str: str, existing_uids: Optional[Set[str]] = None) -> List[Dict[str, Any]]:
@@ -1692,11 +1700,121 @@ def select_stratified_pilot_20(records: List[Dict[str, Any]], target_n: int = 20
 # =====================================================================
 # Dashboard JSON Builder
 # =====================================================================
+def _calc_sample_mean_sd(values: List[float]) -> Tuple[Optional[float], Optional[float]]:
+    n = len(values)
+    if n == 0:
+        return None, None
+    mean_v = sum(values) / n
+    if n < 2:
+        return mean_v, None
+    var = sum((x - mean_v) ** 2 for x in values) / (n - 1)
+    return mean_v, math.sqrt(var)
+
+
+def _eval_12m_spc_status(
+    points: List[Tuple[str, float]],
+    exclude_partial_month: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    최근 12개월 이동 기저선(평균 ± 2SD) + 3개월 연속 상승 기반 증감 상태 판정.
+    - exclude_partial_month: 진행 중인 당월(일수 미완료) 누적 건수 왜곡 방지를 위해
+      CRE 월간 건수 평가 시 진행 중 당월을 평가 대상에서 제외하고 직전 완료월 기준으로 판정.
+    """
+    valid = [(p, v) for p, v in sorted(points, key=lambda x: x[0]) if v is not None]
+    if not valid:
+        return {
+            "status": "insufficient",
+            "label": "• 데이터없음",
+            "evalPeriod": "",
+            "evalValue": None,
+            "isPartialLatest": False,
+            "baselineN": 0,
+            "mean": None,
+            "sd": None,
+            "lower2sd": None,
+            "upper2sd": None,
+            "zScore": None,
+            "streak3Up": False,
+            "vsMeanPct": None,
+            "note": "데이터 없음",
+        }
+
+    is_partial_latest = bool(exclude_partial_month and valid[-1][0] == exclude_partial_month and len(valid) >= 2)
+    eval_series = valid[:-1] if is_partial_latest else valid
+    eval_period, eval_val = eval_series[-1]
+    base_pts = eval_series[:-1][-12:]
+    base_vals = [v for _, v in base_pts]
+    n_base = len(base_vals)
+    mean_v, sd_v = _calc_sample_mean_sd(base_vals)
+
+    streak3_up = False
+    if len(eval_series) >= 4:
+        v0, v1, v2, v3 = [x[1] for x in eval_series[-4:]]
+        streak3_up = (v0 < v1 < v2 < v3)
+
+    vs_mean_pct = round(((eval_val - mean_v) / mean_v) * 100, 1) if (mean_v and mean_v > 0) else None
+    z_score = None
+    lower2sd = None
+    upper2sd = None
+    if mean_v is not None and sd_v is not None:
+        lower2sd = max(0.0, mean_v - 2.0 * sd_v)
+        upper2sd = mean_v + 2.0 * sd_v
+        if sd_v > 0:
+            z_score = round((eval_val - mean_v) / sd_v, 2)
+
+    if n_base < 6:
+        status, label = "insufficient", "• 축적중"
+        note = f"기저선 축적 중 ({n_base}개월 · 6개월 이상 시 ±2SD 판정)"
+    else:
+        if sd_v is not None and sd_v > 0 and z_score is not None:
+            if z_score > 2.0:
+                status, label = "surge", "▲ 급증"
+            elif z_score > 1.0 or (streak3_up and eval_val > mean_v):
+                status, label = "up", "▲ 증가"
+            elif z_score < -2.0:
+                status, label = "down", "▼ 감소"
+            else:
+                status, label = "stable", "─ 유지"
+        else:
+            # sd == 0 (기저 기간 전체 동일값)
+            if mean_v is not None and eval_val > mean_v:
+                status, label = "up", "▲ 증가"
+            elif mean_v is not None and eval_val < mean_v:
+                status, label = "down", "▼ 감소"
+            else:
+                status, label = "stable", "─ 유지"
+        note = f"직전 {n_base}개월 평균±2SD 기준 ({eval_period} 평가)"
+        if is_partial_latest:
+            note += f" · {valid[-1][0]} 집계중 제외"
+
+    return {
+        "status": status,
+        "label": label,
+        "evalPeriod": eval_period,
+        "evalValue": round(eval_val, 3) if not float(eval_val).is_integer() else int(eval_val),
+        "isPartialLatest": is_partial_latest,
+        "baselineN": n_base,
+        "mean": round(mean_v, 4) if mean_v is not None else None,
+        "sd": round(sd_v, 4) if sd_v is not None else None,
+        "lower2sd": round(lower2sd, 4) if lower2sd is not None else None,
+        "upper2sd": round(upper2sd, 4) if upper2sd is not None else None,
+        "zScore": z_score,
+        "streak3Up": streak3_up,
+        "vsMeanPct": vs_mean_pct,
+        "note": note,
+    }
+
+
 def build_surveillance_payload(surv_rows: List[Dict[str, Any]], hai_rows: List[Dict[str, Any]]) -> Dict[str, Any]:
-    current_year = str(now_kst().year)
-    prev_year = str(now_kst().year - 1)
+    now_dt = now_kst()
+    current_year = str(now_dt.year)
+    prev_year = str(now_dt.year - 1)
+    # 당월 28일 이전이면 전수신고 월간 누적건수는 진행 중(집계중)으로 표시
+    partial_ym = now_dt.strftime("%Y-%m") if now_dt.day < 28 else None
 
     by_disease: Dict[str, Dict[str, Any]] = {}
+    all_periods: Set[str] = set()
+    all_years: Set[str] = set()
     latest_updated_at = ""
     for r in surv_rows:
         updated = safe_str(r.get("updated_at"))
@@ -1708,23 +1826,160 @@ def build_surveillance_payload(surv_rows: List[Dict[str, Any]], hai_rows: List[D
             continue
         if updated > latest_updated_at:
             latest_updated_at = updated
+        all_periods.add(p_key)
+        all_years.add(p_key[:4])
         if name not in by_disease:
-            by_disease[name] = {"name": name, "group": grp, "series": []}
-        by_disease[name]["series"].append({"period": p_key, "count": cnt})
+            by_disease[name] = {"name": name, "group": grp, "byPeriod": {}, "series": []}
+        by_disease[name]["byPeriod"][p_key] = cnt
 
+    for entry in by_disease.values():
+        entry["series"] = [{"period": p, "count": c} for p, c in sorted(entry["byPeriod"].items())]
+
+    class1_or_critical_re = re.compile(
+        r"제1급|1급|콜레라|에볼라|마버그|라싸|페스트|탄저|두창|MERS|중동호흡기|SARS|중증급성호흡기|"
+        r"니파|야토병|보툴리눔|디프테리아|신종인플루엔자|동물인플루엔자|VRSA|반코마이신내성",
+        re.IGNORECASE,
+    )
+
+    # 1) 월별 전수감시 급증 스냅샷 (주간 브리핑 선택 주차 기준월 연동용)
+    target_months = sorted([p for p in all_periods if re.match(r"^\d{4}-\d{2}$", p) and p >= f"{prev_year}-12"])
+    if not target_months:
+        target_months = sorted([p for p in all_periods if re.match(r"^\d{4}-\d{2}$", p)])[-12:]
+
+    monthly_snapshots: Dict[str, List[Dict[str, Any]]] = {}
+    for ym in target_months:
+        yr_int = int(ym[:4])
+        mm_str = ym[5:7]
+        m_alerts: List[Dict[str, Any]] = []
+        for name, entry in by_disease.items():
+            cnt = entry["byPeriod"].get(ym)
+            if cnt is None:
+                continue
+            is_cre = bool(re.search(r"CRE|카바페넴내성", name, re.IGNORECASE))
+            is_critical_grp = bool(class1_or_critical_re.search(f"{entry['group']} {name}"))
+
+            if is_critical_grp:
+                if cnt >= 1:
+                    m_alerts.append(
+                        {
+                            "region": "국내 · KDCA",
+                            "level": "critical",
+                            "method": "1급·초저발생 즉시감지",
+                            "disease": name,
+                            "period": ym,
+                            "count": int(cnt),
+                            "zScore": None,
+                            "vsBaselinePct": None,
+                            "reason": (f"국내 제1급 감염병 발생 감지 ({ym} · {int(cnt):,}건)" if "1급" in entry["group"] else f"국내 고위험·초저발생({entry['group'] or '전수감시'}) 발생 감지 ({ym} · {int(cnt):,}건)"),
+                        }
+                    )
+                continue
+
+            if is_cre:
+                # 비계절성 우상향 내성균: 직전 12개월 이동평균 + 2SD 초과 시 경보 (진행 중 당월 제외)
+                if partial_ym and ym == partial_ym:
+                    continue
+                prior_pts = [(p, c) for p, c in sorted(entry["byPeriod"].items()) if p < ym][-12:]
+                if len(prior_pts) >= 6:
+                    mean_v, sd_v = _calc_sample_mean_sd([c for _, c in prior_pts])
+                    if mean_v and sd_v and sd_v > 0:
+                        z = (cnt - mean_v) / sd_v
+                        pct = round(((cnt - mean_v) / mean_v) * 100, 1)
+                        if z > 2.0 and (cnt - mean_v) >= 50:
+                            m_alerts.append(
+                                {
+                                    "region": "국내 · KDCA",
+                                    "level": "surge",
+                                    "method": f"최근 {len(prior_pts)}개월 평균+2SD",
+                                    "disease": name,
+                                    "period": ym,
+                                    "count": int(cnt),
+                                    "zScore": round(z, 2),
+                                    "vsBaselinePct": pct,
+                                    "reason": f"최근 {len(prior_pts)}개월 평균({mean_v:,.0f}건) 대비 +{pct}% (+{z:.1f} SD · 금월 {int(cnt):,}건)",
+                                }
+                            )
+                continue
+
+            # 계절성·일반 전수신고: 최근 3년(YYYY-3 ~ YYYY-1) 동월 기저선 평균 + 2SD 하이브리드
+            hist_same_mm = []
+            for delta_yr in (1, 2, 3):
+                hk = f"{yr_int - delta_yr}-{mm_str}"
+                if hk in entry["byPeriod"]:
+                    hist_same_mm.append(entry["byPeriod"][hk])
+
+            if len(hist_same_mm) >= 2:
+                mean_v, sd_v = _calc_sample_mean_sd(hist_same_mm)
+                if mean_v is not None and mean_v > 0:
+                    pct = round(((cnt - mean_v) / mean_v) * 100, 1)
+                    abs_diff = cnt - mean_v
+                    z = ((cnt - mean_v) / sd_v) if (sd_v and sd_v > 0) else (9.9 if cnt > mean_v else 0.0)
+                    is_surge = (
+                        cnt >= 10
+                        and abs_diff >= 10
+                        and pct >= 30.0
+                        and ((sd_v and sd_v > 0 and z > 2.0) or ((not sd_v or sd_v == 0) and cnt >= mean_v * 1.5))
+                    )
+                    if is_surge:
+                        z_txt = f", +{z:.1f} SD" if (sd_v and sd_v > 0) else ""
+                        m_alerts.append(
+                            {
+                                "region": "국내 · KDCA",
+                                "level": "surge",
+                                "method": f"최근 {len(hist_same_mm)}년 동월 평균+2SD",
+                                "disease": name,
+                                "period": ym,
+                                "count": int(cnt),
+                                "zScore": round(z, 2) if (sd_v and sd_v > 0) else None,
+                                "vsBaselinePct": pct,
+                                "reason": f"최근 {len(hist_same_mm)}년 동월 평균({mean_v:,.1f}건) 대비 +{pct}%{z_txt} (금월 {int(cnt):,}건)",
+                            }
+                        )
+            elif len(hist_same_mm) == 1:
+                # 2023~2024 소급 전 또는 신규 전수감시 전환 질환 안전 폴백: 전년 동월(YoY) 비교 (절대 직전 4개월 비교 금지)
+                yoy_val = hist_same_mm[0]
+                if yoy_val > 0:
+                    pct = round(((cnt - yoy_val) / yoy_val) * 100, 1)
+                    if cnt >= 10 and (cnt - yoy_val) >= 10 and pct >= 50.0:
+                        m_alerts.append(
+                            {
+                                "region": "국내 · KDCA",
+                                "level": "surge",
+                                "method": "전년 동월 대비(YoY)",
+                                "disease": name,
+                                "period": ym,
+                                "count": int(cnt),
+                                "zScore": None,
+                                "vsBaselinePct": pct,
+                                "reason": f"전년 동월({int(yoy_val):,}건) 대비 +{pct}% (금월 {int(cnt):,}건 · 3년 기저선 확보 전)",
+                            }
+                        )
+
+        m_alerts.sort(
+            key=lambda x: (
+                0 if x["level"] == "critical" else 1,
+                -(x["zScore"] if x["zScore"] is not None else 0),
+                -(x["vsBaselinePct"] if x["vsBaselinePct"] is not None else 0),
+            )
+        )
+        monthly_snapshots[ym] = m_alerts[:8]
+
+    latest_month = target_months[-1] if target_months else ""
+    surge_alerts = monthly_snapshots.get(latest_month, [])
+
+    # 2) CRE / VRSA 카드 및 CRE 12개월 ± 2SD 통계
     mdr_cards = []
-    surge_alerts = []
     cre_series = {"currentYear": current_year, "current": [], "prev": []}
-
+    cre_stats = _eval_12m_spc_status([])
     for name, entry in by_disease.items():
-        s = sorted(entry["series"], key=lambda x: x["period"])
+        s = entry["series"]
         if not s:
             continue
+        is_cre = bool(re.search(r"CRE|카바페넴내성", name, re.IGNORECASE))
+        is_vrsa = bool(re.search(r"VRSA|반코마이신내성", name, re.IGNORECASE))
+        if not (is_cre or is_vrsa):
+            continue
         latest = s[-1]
-        prev4 = s[max(0, len(s) - 5) : len(s) - 1]
-        avg4 = (sum(x["count"] for x in prev4) / len(prev4)) if prev4 else None
-        vs_avg4_pct = round(((latest["count"] - avg4) / avg4) * 100, 1) if (avg4 and avg4 > 0) else None
-
         yoy_key = compute_prev_year_period_key(latest["period"])
         yoy_pt = next((x for x in s if x["period"] == yoy_key), None) if yoy_key else None
         vs_yoy_pct = (
@@ -1732,57 +1987,25 @@ def build_surveillance_payload(surv_rows: List[Dict[str, Any]], hai_rows: List[D
             if (yoy_pt and yoy_pt["count"] > 0)
             else None
         )
-
-        is_cre = bool(re.search(r"CRE|카바페넴내성", name, re.IGNORECASE))
-        is_vrsa = bool(re.search(r"VRSA|반코마이신내성", name, re.IGNORECASE))
-
-        if is_cre or is_vrsa:
-            mdr_cards.append(
-                {
-                    "code": "CRE" if is_cre else "VRSA",
-                    "label": "CRE (카바페넴내성장내세균목)" if is_cre else "VRSA (반코마이신내성황색포도알균)",
-                    "period": latest["period"],
-                    "count": int(latest["count"]) if float(latest["count"]).is_integer() else latest["count"],
-                    "avg4": round(avg4, 1) if avg4 is not None else None,
-                    "vsAvg4Pct": vs_avg4_pct,
-                    "vsYoyPct": vs_yoy_pct,
-                }
-            )
-            if is_cre:
-                cre_series["current"] = [x for x in s if x["period"].startswith(f"{current_year}-")]
-                cre_series["prev"] = [x for x in s if x["period"].startswith(f"{prev_year}-")]
-        else:
-            is_class1 = bool(
-                re.search(r"제1급|1급|콜레라|에볼라|마버그|라싸|페스트|탄저|두창|MERS|중동호흡기", f"{entry['group']} {name}", re.IGNORECASE)
-            )
-            if is_class1 and latest["count"] > 0:
-                surge_alerts.append(
-                    {
-                        "region": "국내 · KDCA",
-                        "level": "critical",
-                        "disease": name,
-                        "period": latest["period"],
-                        "count": int(latest["count"]),
-                        "vsAvg4Pct": vs_avg4_pct,
-                        "reason": f"국내 제1급·콜레라 발생 감지 ({latest['period']} · {int(latest['count'])}건)",
-                    }
-                )
-            elif vs_avg4_pct is not None and vs_avg4_pct >= 30 and latest["count"] >= 10:
-                surge_alerts.append(
-                    {
-                        "region": "국내 · KDCA",
-                        "level": "surge",
-                        "disease": name,
-                        "period": latest["period"],
-                        "count": int(latest["count"]),
-                        "vsAvg4Pct": vs_avg4_pct,
-                        "reason": f"국내 최근 4기 평균({round(avg4)}건) 대비 +{vs_avg4_pct}% 급증",
-                    }
-                )
+        spc = _eval_12m_spc_status([(x["period"], x["count"]) for x in s], exclude_partial_month=partial_ym if is_cre else None)
+        mdr_cards.append(
+            {
+                "code": "CRE" if is_cre else "VRSA",
+                "label": "CRE (카바페넴내성장내세균목)" if is_cre else "VRSA (반코마이신내성황색포도알균)",
+                "period": latest["period"],
+                "count": int(latest["count"]) if float(latest["count"]).is_integer() else latest["count"],
+                "vsYoyPct": vs_yoy_pct,
+                "spc": spc,
+            }
+        )
+        if is_cre:
+            cre_series["current"] = [x for x in s if x["period"].startswith(f"{current_year}-")]
+            cre_series["prev"] = [x for x in s if x["period"].startswith(f"{prev_year}-")]
+            cre_stats = spc
 
     mdr_cards.sort(key=lambda x: 0 if x["code"] == "CRE" else 1)
-    surge_alerts.sort(key=lambda x: (0 if x["level"] == "critical" else 1, -(x["vsAvg4Pct"] or 0)))
 
+    # 3) 4급 HAI 5종 12개월 기저선 ± 2SD 증감 판정
     hai_by_patho: Dict[str, List[Dict[str, Any]]] = {}
     for r in hai_rows:
         ym = normalize_period_key(r.get("period_ym"))
@@ -1797,7 +2020,9 @@ def build_surveillance_payload(surv_rows: List[Dict[str, Any]], hai_rows: List[D
     hai_cards = []
     hai_annual_series = []
     for p in hai_order:
-        arr = sorted(hai_by_patho.get(p, []), key=lambda x: x["period"])
+        # 월 중복 방어
+        dedup_p = {x["period"]: x for x in hai_by_patho.get(p, [])}
+        arr = [dedup_p[k] for k in sorted(dedup_p.keys())]
         if not arr:
             continue
         latest = arr[-1]
@@ -1812,6 +2037,8 @@ def build_surveillance_payload(surv_rows: List[Dict[str, Any]], hai_rows: List[D
             if (prev and prev["nonBlood"] and latest["nonBlood"] is not None)
             else None
         )
+        blood_spc = _eval_12m_spc_status([(x["period"], x["blood"]) for x in arr if x["blood"] is not None])
+        non_blood_spc = _eval_12m_spc_status([(x["period"], x["nonBlood"]) for x in arr if x["nonBlood"] is not None])
         hai_cards.append(
             {
                 "pathogen": p,
@@ -1820,21 +2047,34 @@ def build_surveillance_payload(surv_rows: List[Dict[str, Any]], hai_rows: List[D
                 "nonBloodRate": latest["nonBlood"],
                 "bloodDeltaPct": blood_delta,
                 "nonBloodDeltaPct": non_blood_delta,
+                "bloodSpc": blood_spc,
+                "nonBloodSpc": non_blood_spc,
             }
         )
         cur_yr = [x for x in arr if x["period"].startswith(f"{current_year}-")]
-        hai_annual_series.append({"pathogen": p, "points": cur_yr if cur_yr else arr})
+        hai_annual_series.append(
+            {
+                "pathogen": p,
+                "points": cur_yr if cur_yr else arr,
+                "bloodSpc": blood_spc,
+                "nonBloodSpc": non_blood_spc,
+            }
+        )
 
     return {
         "year": current_year,
         "updatedAt": latest_updated_at,
+        "latestMonth": latest_month,
+        "partialMonth": partial_ym,
+        "baselineYears": sorted(all_years),
         "mdrCards": mdr_cards,
         "haiCards": hai_cards,
         "haiAnnualSeries": hai_annual_series,
         "creSeries": cre_series,
-        "surgeAlerts": surge_alerts[:6],
+        "creStats": cre_stats,
+        "surgeAlerts": surge_alerts,
+        "monthlySnapshots": monthly_snapshots,
     }
-
 
 def write_dashboard_json(
     item_rows: List[Dict[str, Any]],
@@ -1930,6 +2170,8 @@ def write_dashboard_json(
         "items": items,
         "logs": logs,
         "surveillance": build_surveillance_payload(surv_rows, hai_rows),
+        "notifiableDiseases": json.loads(NOTIFIABLE_DISEASES_MASTER_JSON),
+        "referenceStandards": json.loads(REFERENCE_STANDARDS_MASTER_JSON),
     }
 
     OUTPUT_JSON_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -2668,7 +2910,7 @@ def mode_resummarize_all(force: bool = False, allow_h1: bool = False) -> None:
         meta = r[17].strip()
         if ctype == "duplicate":
             continue
-        if (not force) and (meta.startswith(f"{CODE_VERSION}|") or meta.startswith("v8.2|")):
+        if (not force) and any(meta.startswith(p) for p in (f"{CODE_VERSION}|", "v8.3|", "v8.2.1|", "v8.2|")):
             continue
         # 상반기 소급 가드: allow_h1=False일 때 2026-07-01 이전 논문은 익월 크레딧 단계로 보류
         if guard_active and ctype == "paper" and pub_date and pub_date < H2_GUARD_START_DATE:
@@ -2858,11 +3100,56 @@ def mode_build_from_csv(csv_dir: Path) -> None:
     write_dashboard_json(items, surv, hai, logs, cfg_map)
 
 
+def mode_sync_sheet_only() -> None:
+    """[AI API 비용 0원] KDCA 전수신고 4년치(최근 3년 동월 기저선) 자동 보강 + 시트 수정분(hai_stats 등) 대시보드 즉시 반영"""
+    ss = connect_spreadsheet()
+    kdca_key = os.environ.get("KDCA_API_KEY", "").strip()
+    now_str = now_kst_str()
+    run_id = "GH_SYNC_" + now_kst().strftime("%Y%m%d_%H%M%S")
+    kdca_note = ""
+    kdca_cnt = 0
+    if kdca_key:
+        try:
+            kdca_cnt, kdca_note = sync_kdca_surveillance_api(ss, kdca_key, now_str)
+            print(f"[KDCA 4년치 동기화 완료 (AI 비용 0원)] {kdca_note}")
+        except Exception as e:
+            kdca_note = f"KDCA API 동기화 건너뜀({str(e)[:120]}) — 기존 시트 데이터 유지"
+            print(f"[KDCA 경고] {kdca_note}")
+    else:
+        kdca_note = "KDCA_API_KEY 미설정 — 기존 시트 데이터로 갱신"
+    append_run_log(
+        ss,
+        run_id,
+        now_str,
+        "SYNC_SHEET",
+        "Success",
+        kdca_cnt,
+        kdca_cnt,
+        0,
+        f"{CODE_VERSION} AI비용0원 시트·전수감시 동기화 · {kdca_note}",
+    )
+    sync_sheet_to_dashboard_json(ss)
+
+
+def mode_sync_kdca_and_dashboard() -> None:
+    """[AI API 비용 0원] KDCA 전수신고 4년치(최근 3년 동월 기저선 포함) 소급 갱신 + dashboard.json 재생성"""
+    ss = connect_spreadsheet()
+    kdca_key = os.environ.get("KDCA_API_KEY", "").strip()
+    now_str = now_kst_str()
+    run_id = "GH_KDCA_" + now_kst().strftime("%Y%m%d_%H%M%S")
+    if not kdca_key:
+        raise RuntimeError("KDCA_API_KEY 가 설정되지 않았습니다.")
+    cnt, note = sync_kdca_surveillance_api(ss, kdca_key, now_str)
+    print(f"[KDCA 4년치 소급 완료 (AI 비용 0원)] {note}")
+    append_run_log(ss, run_id, now_str, "KDCA_BACKFILL", "Success", cnt, cnt, 0, f"{CODE_VERSION} AI비용0원 · {note}")
+    sync_sheet_to_dashboard_json(ss)
+
+
 def main():
-    parser = argparse.ArgumentParser(description="임상미생물 주간 브리핑 파이프라인 v8.2.1")
+    parser = argparse.ArgumentParser(description="임상미생물 주간 브리핑 파이프라인 v8.3.0")
     parser.add_argument(
         "--mode",
-        choices=["pilot_20", "collect", "resummarize_all", "reclassify_only", "sync_sheet_only", "test_apis", "build_from_csv"],
+        choices=["sync_kdca_and_dashboard", "sync_sheet_only", "collect", "resummarize_all", "reclassify_only", "pilot_20", "test_apis", "build_from_csv"],
         default="collect",
     )
     parser.add_argument("--allow-h1", action="store_true", help="2026년 상반기(1~6월) 소급 가드 해제")
@@ -2878,9 +3165,10 @@ def main():
         mode_pilot_20()
     elif args.mode == "reclassify_only":
         mode_reclassify_only()
+    elif args.mode == "sync_kdca_and_dashboard":
+        mode_sync_kdca_and_dashboard()
     elif args.mode == "sync_sheet_only":
-        ss = connect_spreadsheet()
-        sync_sheet_to_dashboard_json(ss)
+        mode_sync_sheet_only()
     elif args.mode == "resummarize_all":
         mode_resummarize_all(force=args.force, allow_h1=args.allow_h1)
     else:
