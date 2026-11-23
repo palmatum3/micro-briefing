@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="robots" content="noindex, nofollow" />
-  <title>임상미생물 주간 브리핑 v8.3.0</title>
+  <title>임상미생물 주간 브리핑 v8.3.2</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
   <style>
     :root {
@@ -530,6 +530,23 @@
       background: #f0fdf4;
       border-color: #bbf7d0;
     }
+    .std-card.is-alert {
+      background: #fef2f2;
+      border-color: #fca5a5;
+    }
+    .live-check-bar {
+      margin-bottom: 12px;
+      padding: 8px 12px;
+      background: var(--surface-soft);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 0.77rem;
+      color: var(--text-muted);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
     .std-top {
       display: flex;
       justify-content: space-between;
@@ -645,7 +662,7 @@
     <div class="topbar-inner">
       <div class="brand-row">
         <div>
-          <div class="brand-title">임상미생물 주간 브리핑 <span class="ver-pill">v8.3.0</span></div>
+          <div class="brand-title">임상미생물 주간 브리핑 <span class="ver-pill">v8.3.2</span></div>
           <div class="brand-sub" id="brandSub">GitHub Pages 메인 대시보드 · 데이터 불러오는 중...</div>
         </div>
         <div class="meta-actions">
@@ -827,38 +844,72 @@
       </div>
     </section>
 
-    <!-- ==================== 탭 3: 가이드라인 (CLSI M·MM / EUCAST 현황판 + 학회 지침) ==================== -->
+    <!-- ==================== 탭 3: 가이드라인 (3개 서브탭 완전 분리: IDSA·ESCMID / CLSI M·MM / EUCAST) ==================== -->
     <section id="tab-guideline" class="tab-pane">
-      <!-- CLSI (M·MM) & EUCAST 현행 최신판 현황판 -->
-      <div class="card">
-        <div class="section-head">
-          <div>
-            <h2 class="section-title">CLSI (M · MM 시리즈) · EUCAST 2026 현행 최신판 현황판</h2>
-            <div class="section-sub" id="stdUpdatedNote">미생물(M)·분자진단(MM) 및 EUCAST 공식 표준 최신판 안내</div>
-          </div>
-          <div class="pill-group" id="stdFilterPills">
-            <button class="pill-btn active" data-series="all" type="button">전체</button>
-            <button class="pill-btn" data-series="M" type="button">CLSI M (미생물·AST)</button>
-            <button class="pill-btn" data-series="MM" type="button">CLSI MM (분자진단)</button>
-            <button class="pill-btn" data-series="EUCAST" type="button">EUCAST (유럽 기준)</button>
-          </div>
+      <div class="toolbar" style="justify-content: space-between;">
+        <div class="pill-group">
+          <button class="pill-btn active" id="guideSubIdsa" type="button">IDSA · ESCMID <span id="cntGuideIdsa"></span></button>
+          <button class="pill-btn" id="guideSubClsi" type="button">CLSI M · MM <span id="cntGuideClsi"></span></button>
+          <button class="pill-btn" id="guideSubEucast" type="button">EUCAST <span id="cntGuideEucast"></span></button>
         </div>
-        <div id="stdBoardGrid" class="std-grid"></div>
       </div>
 
-      <!-- 기존 학회 가이드라인 목록 -->
-      <div class="card">
-        <div class="section-head">
-          <h2 class="section-title">2026년 임상미생물·감염병 학회 가이드라인 (IDSA · ESCMID)</h2>
-          <span class="section-sub" id="guideFilterMeta"></span>
+      <!-- 서브탭 1: IDSA · ESCMID 학회 가이드라인 -->
+      <div id="guidePaneIdsa">
+        <div class="card">
+          <div class="section-head">
+            <h2 class="section-title">2026년 임상미생물·감염병 학회 가이드라인 (IDSA · ESCMID)</h2>
+            <span class="section-sub" id="guideFilterMeta"></span>
+          </div>
+          <div class="toolbar">
+            <input class="input input-search" id="guideSearch" type="search" placeholder="가이드라인 제목·요약 키워드 검색 (예: CRE, 뇌염, beta-lactam)..." />
+            <select class="select" id="guideSource"></select>
+            <select class="select" id="guideCat"></select>
+            <button class="btn" id="guideBmOnly" type="button">★ 북마크만</button>
+          </div>
+          <div id="guideList" class="item-list"></div>
         </div>
-        <div class="toolbar">
-          <input class="input input-search" id="guideSearch" type="search" placeholder="가이드라인 제목·요약 키워드 검색 (예: CRE, 뇌염, beta-lactam)..." />
-          <select class="select" id="guideSource"></select>
-          <select class="select" id="guideCat"></select>
-          <button class="btn" id="guideBmOnly" type="button">★ 북마크만</button>
+      </div>
+
+      <!-- 서브탭 2: CLSI M · MM 시리즈 현행 최신판 -->
+      <div id="guidePaneClsi" style="display:none;">
+        <div class="card">
+          <div class="section-head">
+            <div>
+              <h2 class="section-title">CLSI (M 미생물 · MM 감염분자진단) 현행 표준 현황판</h2>
+              <div class="section-sub" id="clsiUpdatedNote">임상미생물(M)·감염분자진단(MM) 핵심 현행 표준 (유전질환/암 분자병리 MM·수의학 VET 제외)</div>
+            </div>
+            <div class="pill-group" id="clsiSeriesPills">
+              <button class="pill-btn active" data-series="all" type="button">전체</button>
+              <button class="pill-btn" data-series="M" type="button">CLSI M (미생물·AST)</button>
+              <button class="pill-btn" data-series="MM" type="button">CLSI MM (분자진단)</button>
+            </div>
+          </div>
+          <div id="clsiLiveBar" class="live-check-bar" style="display:none;"></div>
+          <div class="toolbar" style="margin-bottom:12px;">
+            <input class="input input-search" id="clsiSearch" type="search" placeholder="CLSI 문서 코드·제목·키워드 검색 (예: M100, M47, 혈액배양, 진균, MM06, MM14)..." />
+            <span class="section-sub" id="clsiCountMeta"></span>
+          </div>
+          <div id="clsiBoardGrid" class="std-grid"></div>
         </div>
-        <div id="guideList" class="item-list"></div>
+      </div>
+
+      <!-- 서브탭 3: EUCAST 현행 최신판 -->
+      <div id="guidePaneEucast" style="display:none;">
+        <div class="card">
+          <div class="section-head">
+            <div>
+              <h2 class="section-title">EUCAST (유럽 항균제 감수성 위원회) 2026 현행 최신판</h2>
+              <div class="section-sub">세균·진균 브레이크포인트, QC 기준표, 신속 RAST 및 혐기성 디스크 확산법 (무료 공식 원문 연결)</div>
+            </div>
+            <span class="section-sub" id="eucastCountMeta"></span>
+          </div>
+          <div id="eucastLiveBar" class="live-check-bar" style="display:none;"></div>
+          <div class="toolbar" style="margin-bottom:12px;">
+            <input class="input input-search" id="eucastSearch" type="search" placeholder="EUCAST 기준표 검색 (예: Bacteria, Fungi, RAST, QC, Anaerobic)..." />
+          </div>
+          <div id="eucastBoardGrid" class="std-grid"></div>
+        </div>
       </div>
     </section>
 
@@ -866,7 +917,7 @@
     <section id="tab-paper" class="tab-pane">
       <div class="card">
         <div class="section-head">
-          <h2 class="section-title">임상미생물 주요 학술지 논문 (JCM · CMI · CID · ACM)</h2>
+          <h2 class="section-title">임상미생물 · 감염병 주요 학술지 논문</h2>
           <span class="section-sub" id="paperFilterMeta"></span>
         </div>
         <div class="toolbar">
@@ -926,7 +977,7 @@
     <div class="footer-note">
       본 대시보드는 공개 학술 초록(PubMed·Crossref) 및 공식 감염병 통계(KDCA·WHO) 기반 참고 요약입니다.
       AI 해석은 원문 사실과 분리 표기되며, 최종 임상·검사실 의사결정 시 반드시 원문을 확인하세요.
-      (북마크는 현재 기기 브라우저에 개인별 저장 · GitHub Pages 메인 단일화 v8.3.0)
+      (북마크는 현재 기기 브라우저에 개인별 저장 · GitHub Pages 메인 단일화 v8.3.2)
     </div>
   </main>
 
@@ -974,7 +1025,8 @@
       obRegion: 'all',
       obCeOnly: false,
       notifiableGroup: 'all',
-      stdSeries: 'all',
+      guideSubView: 'idsa',
+      clsiSeries: 'all',
       guideBmOnly: false,
       paperBmOnly: false,
       paperCeOnly: false,
@@ -1650,59 +1702,133 @@
                 '<strong>신고범위:</strong> ' + esc(d.scope) + ' &nbsp;|&nbsp; <strong>진단검사 기준:</strong> ' + esc(d.lab) +
               '</div>' +
               '<div class="notifiable-foot">' +
-                '<div><strong>연계 지침:</strong> ' + esc(d.guidelineGroup) + ' (' + esc(d.latestYear || '2026') + ') · <strong>담당:</strong> ' + esc(d.dept || '-') + '</div>' +
-                '<a href="' + esc(d.latestUrl || 'https://www.kdca.go.kr/kdca/2861/subview.do') + '" target="_blank" rel="noopener noreferrer" style="font-weight:700;">KDCA 최신 지침 확인 ↗</a>' +
+                '<div><strong>연계 지침:</strong> ' + esc(d.liveMatched ? (d.latestTitle || d.guidelineGroup) : d.guidelineGroup) + ' (' + esc(d.latestYear || '2026') + ') ' + (d.liveMatched ? '<span class="badge b-oa">게시판 자동매칭</span> ' : '') + '· <strong>담당:</strong> ' + esc(d.dept || '-') + '</div>' +
+                '<a href="' + esc(d.latestUrl || 'https://www.kdca.go.kr/kdca/2861/subview.do') + '" target="_blank" rel="noopener noreferrer" style="font-weight:700;">' + (d.liveMatched ? '최신 지침 바로가기 ↗' : 'KDCA 최신 지침 확인 ↗') + '</a>' +
               '</div>' +
             '</article>'
           )).join('')
         : '<div class="empty-state">조건에 맞는 법정감염병·지침이 없습니다.</div>';
     }
 
-    /* ==================== 탭 3: CLSI(M·MM) · EUCAST 현황판 + 학회 가이드라인 ==================== */
+    /* ==================== 탭 3: 가이드라인 3개 서브탭 분리 (IDSA·ESCMID / CLSI M·MM / EUCAST) ==================== */
+    function setGuideSubView(viewName) {
+      state.guideSubView = viewName;
+      const views = {
+        idsa: { btn: 'guideSubIdsa', pane: 'guidePaneIdsa' },
+        clsi: { btn: 'guideSubClsi', pane: 'guidePaneClsi' },
+        eucast: { btn: 'guideSubEucast', pane: 'guidePaneEucast' }
+      };
+      Object.keys(views).forEach(k => {
+        const active = k === viewName;
+        document.getElementById(views[k].btn).classList.toggle('active', active);
+        document.getElementById(views[k].pane).style.display = active ? 'block' : 'none';
+      });
+    }
+
+    function renderStandardCardHtml(it) {
+      const isAlert = String(it.liveStatus || '').indexOf('신규 개정 감지') !== -1;
+      const isNew2026 = String(it.status || '').indexOf('2026') !== -1 || String(it.status || '').indexOf('신규') !== -1 || String(it.status || '').indexOf('2025 개정') !== -1;
+      const seriesCls = it.series === 'EUCAST' ? 'b-overseas' : (it.series === 'MM' ? 'b-cat' : 'b-domestic');
+      const liveChip = isAlert
+        ? ('<span class="badge b-must">🚨 ' + esc(it.liveStatus) + '</span>')
+        : (it.liveStatus && it.liveStatus.indexOf('일치') !== -1 ? '<span class="badge b-oa">' + esc(it.liveStatus) + '</span>' : '');
+      return (
+        '<div class="std-card' + (isAlert ? ' is-alert' : (isNew2026 ? ' is-new' : '')) + '">' +
+          '<div class="std-top">' +
+            '<div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">' +
+              '<span class="badge ' + seriesCls + '">' + esc(it.series === 'EUCAST' ? 'EUCAST' : ('CLSI ' + it.series)) + '</span>' +
+              '<span class="std-code">' + esc(it.code) + '</span>' +
+            '</div>' +
+            '<span class="badge ' + (isNew2026 ? 'b-std-new' : 'b-std-cur') + '">' + esc(it.status || '현행') + ' · ' + esc(it.edition) + '</span>' +
+          '</div>' +
+          '<div class="std-ko">' + esc(it.titleKo) + '</div>' +
+          '<div class="std-en">' + esc(it.title) + '</div>' +
+          '<div class="std-note">' + esc(it.note) + '</div>' +
+          '<div class="std-foot">' +
+            '<div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">' +
+              '<span>발간/발효: ' + esc(it.publishedDate || '-') + '</span>' +
+              liveChip +
+            '</div>' +
+            '<a href="' + esc(it.url) + '" target="_blank" rel="noopener noreferrer" style="font-weight:700;">공식 페이지 ↗</a>' +
+          '</div>' +
+        '</div>'
+      );
+    }
+
     function renderReferenceStandards() {
       const rs = state.data.referenceStandards || {};
-      const allStds = [].concat(rs.clsi_m || [], rs.clsi_mm || [], rs.eucast || []);
-      const noteEl = document.getElementById('stdUpdatedNote');
-      if (noteEl && rs.updatedNote) {
-        noteEl.textContent = rs.updatedNote + ' · CLSI는 M(미생물·AST)·MM(분자진단) 시리즈 집중 모니터링';
+      const clsiM = rs.clsi_m || [];
+      const clsiMM = rs.clsi_mm || [];
+      const clsiAll = [].concat(clsiM, clsiMM);
+      const eucastAll = rs.eucast || [];
+      const lcs = rs.liveCheckSummary || null;
+
+      // Sub-tab header counts
+      const guidelinesAll = (state.data.items || []).filter(x => x.content_type === 'guideline');
+      document.getElementById('cntGuideIdsa').textContent = '(' + guidelinesAll.length + ')';
+      document.getElementById('cntGuideClsi').textContent = '(' + clsiAll.length + ')';
+      document.getElementById('cntGuideEucast').textContent = '(' + eucastAll.length + ')';
+
+      // CLSI pane
+      const noteEl = document.getElementById('clsiUpdatedNote');
+      if (noteEl && rs.updatedNote) noteEl.textContent = rs.updatedNote;
+
+      const clsiLiveBar = document.getElementById('clsiLiveBar');
+      if (clsiLiveBar && lcs && lcs.checkedAt) {
+        clsiLiveBar.style.display = 'flex';
+        clsiLiveBar.innerHTML =
+          '<span class="badge b-oa">점검시각 ' + esc(lcs.checkedAt) + '</span>' +
+          '<span>' + esc(lcs.clsiStatus || '') + '</span>';
+      } else if (clsiLiveBar) {
+        clsiLiveBar.style.display = 'none';
       }
 
-      const cntM = (rs.clsi_m || []).length;
-      const cntMM = (rs.clsi_mm || []).length;
-      const cntEu = (rs.eucast || []).length;
-      document.querySelectorAll('#stdFilterPills .pill-btn').forEach(b => {
+      document.querySelectorAll('#clsiSeriesPills .pill-btn').forEach(b => {
         const s = b.dataset.series;
-        if (s === 'all') b.textContent = '전체 (' + allStds.length + ')';
-        else if (s === 'M') b.textContent = 'CLSI M (' + cntM + ')';
-        else if (s === 'MM') b.textContent = 'CLSI MM (' + cntMM + ')';
-        else if (s === 'EUCAST') b.textContent = 'EUCAST (' + cntEu + ')';
+        if (s === 'all') b.textContent = '전체 (' + clsiAll.length + ')';
+        else if (s === 'M') b.textContent = 'CLSI M (' + clsiM.length + ')';
+        else if (s === 'MM') b.textContent = 'CLSI MM (' + clsiMM.length + ')';
       });
 
-      const shown = allStds.filter(it => state.stdSeries === 'all' || it.series === state.stdSeries);
-      document.getElementById('stdBoardGrid').innerHTML = shown.length
-        ? shown.map(it => {
-            const isNew2026 = String(it.status || '').indexOf('2026') !== -1;
-            const seriesCls = it.series === 'EUCAST' ? 'b-overseas' : (it.series === 'MM' ? 'b-cat' : 'b-domestic');
-            return (
-              '<div class="std-card' + (isNew2026 ? ' is-new' : '') + '">' +
-                '<div class="std-top">' +
-                  '<div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">' +
-                    '<span class="badge ' + seriesCls + '">' + esc(it.series === 'EUCAST' ? 'EUCAST' : ('CLSI ' + it.series)) + '</span>' +
-                    '<span class="std-code">' + esc(it.code) + '</span>' +
-                  '</div>' +
-                  '<span class="badge ' + (isNew2026 ? 'b-std-new' : 'b-std-cur') + '">' + esc(it.status || '현행') + ' · ' + esc(it.edition) + '</span>' +
-                '</div>' +
-                '<div class="std-ko">' + esc(it.titleKo) + '</div>' +
-                '<div class="std-en">' + esc(it.title) + '</div>' +
-                '<div class="std-note">' + esc(it.note) + '</div>' +
-                '<div class="std-foot">' +
-                  '<span>발간/발효: ' + esc(it.publishedDate || '-') + '</span>' +
-                  '<a href="' + esc(it.url) + '" target="_blank" rel="noopener noreferrer" style="font-weight:700;">공식 페이지 ↗</a>' +
-                '</div>' +
-              '</div>'
-            );
-          }).join('')
-        : '<div class="empty-state">표시할 표준 기준이 없습니다.</div>';
+      const qClsi = (document.getElementById('clsiSearch').value || '').trim().toLowerCase();
+      const shownClsi = clsiAll.filter(it => {
+        if (state.clsiSeries !== 'all' && it.series !== state.clsiSeries) return false;
+        if (qClsi) {
+          const hay = (it.code + ' ' + it.titleKo + ' ' + it.title + ' ' + it.edition + ' ' + it.note + ' ' + (it.status || '')).toLowerCase();
+          if (hay.indexOf(qClsi) === -1) return false;
+        }
+        return true;
+      });
+      document.getElementById('clsiCountMeta').textContent = '표시 ' + shownClsi.length + '종 / 전체 ' + clsiAll.length + '종';
+      document.getElementById('clsiBoardGrid').innerHTML = shownClsi.length
+        ? shownClsi.map(renderStandardCardHtml).join('')
+        : '<div class="empty-state">조건에 맞는 CLSI 표준이 없습니다.</div>';
+
+      // EUCAST pane
+      const euLiveBar = document.getElementById('eucastLiveBar');
+      if (euLiveBar && lcs && lcs.checkedAt) {
+        euLiveBar.style.display = 'flex';
+        const updBadge = (lcs.updatesDetectedCount > 0)
+          ? '<span class="badge b-must">🚨 신규 개정 감지</span>'
+          : '<span class="badge b-oa">자동 점검 완료</span>';
+        euLiveBar.innerHTML =
+          updBadge +
+          '<span><strong>점검시각:</strong> ' + esc(lcs.checkedAt) + '</span>' +
+          '<span>· ' + esc(lcs.eucastStatus || '') + '</span>';
+      } else if (euLiveBar) {
+        euLiveBar.style.display = 'none';
+      }
+
+      const qEu = (document.getElementById('eucastSearch').value || '').trim().toLowerCase();
+      const shownEu = eucastAll.filter(it => {
+        if (!qEu) return true;
+        const hay = (it.code + ' ' + it.titleKo + ' ' + it.title + ' ' + it.edition + ' ' + it.note + ' ' + (it.status || '')).toLowerCase();
+        return hay.indexOf(qEu) !== -1;
+      });
+      document.getElementById('eucastCountMeta').textContent = '표시 ' + shownEu.length + '종 / 전체 ' + eucastAll.length + '종';
+      document.getElementById('eucastBoardGrid').innerHTML = shownEu.length
+        ? shownEu.map(renderStandardCardHtml).join('')
+        : '<div class="empty-state">조건에 맞는 EUCAST 기준이 없습니다.</div>';
     }
 
     function renderGuidelines() {
@@ -1919,13 +2045,19 @@
       });
       document.getElementById('notifiableSearch').addEventListener('input', renderNotifiableDiseases);
 
-      document.querySelectorAll('#stdFilterPills .pill-btn').forEach(b => {
+      document.getElementById('guideSubIdsa').addEventListener('click', () => setGuideSubView('idsa'));
+      document.getElementById('guideSubClsi').addEventListener('click', () => setGuideSubView('clsi'));
+      document.getElementById('guideSubEucast').addEventListener('click', () => setGuideSubView('eucast'));
+
+      document.querySelectorAll('#clsiSeriesPills .pill-btn').forEach(b => {
         b.addEventListener('click', () => {
-          state.stdSeries = b.dataset.series;
-          document.querySelectorAll('#stdFilterPills .pill-btn').forEach(x => x.classList.toggle('active', x === b));
+          state.clsiSeries = b.dataset.series;
+          document.querySelectorAll('#clsiSeriesPills .pill-btn').forEach(x => x.classList.toggle('active', x === b));
           renderReferenceStandards();
         });
       });
+      document.getElementById('clsiSearch').addEventListener('input', renderReferenceStandards);
+      document.getElementById('eucastSearch').addEventListener('input', renderReferenceStandards);
 
       ['guideSearch', 'guideSource', 'guideCat'].forEach(id => {
         document.getElementById(id).addEventListener('input', renderGuidelines);
