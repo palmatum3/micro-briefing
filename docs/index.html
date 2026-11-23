@@ -1295,6 +1295,9 @@
         const ctx = chart.ctx;
         const area = chart.chartArea;
         if (!area) return;
+        const yRightScale = (chart.scales && chart.scales.yCre) ? chart.scales.yCre : null;
+        const rightAxisEnd = yRightScale ? yRightScale.right : area.right;
+        const isNarrow = chart.width < 640;
         const entries = [];
         chart.data.datasets.forEach((ds, di) => {
           if (!chart.isDatasetVisible(di)) return;
@@ -1314,14 +1317,13 @@
             rawY: pt.y,
             y: pt.y,
             color: ds.borderColor || '#334155',
-            text: ds.endLabelText || ds.label || ''
+            text: (isNarrow && ds.endLabelShort) ? ds.endLabelShort : (ds.endLabelText || ds.label || '')
           });
         });
         if (!entries.length) return;
 
         // Vertical collision de-overlap
-        const isNarrow = chart.width < 600;
-        const minGap = isNarrow ? 14 : 16;
+        const minGap = isNarrow ? 15 : 18;
         entries.sort((a, b) => a.rawY - b.rawY);
         for (let i = 1; i < entries.length; i++) {
           if (entries[i].y - entries[i - 1].y < minGap) {
@@ -1347,23 +1349,33 @@
           }
         }
 
+        const dotX = rightAxisEnd + 10;
+        const labelX = dotX + 7;
+
         ctx.save();
         ctx.font = (isNarrow ? '700 10px ' : '700 11px ') + '-apple-system, BlinkMacSystemFont, "Pretendard", sans-serif';
         ctx.textAlign = 'left';
         ctx.textBaseline = 'middle';
 
         entries.forEach(en => {
-          const labelX = area.right + 10;
-          if (Math.abs(en.y - en.rawY) > 2 || (labelX - en.x) > 14) {
-            ctx.beginPath();
-            ctx.strokeStyle = en.color;
-            ctx.globalAlpha = 0.45;
-            ctx.lineWidth = 1;
-            ctx.moveTo(en.x + 3, en.rawY);
-            ctx.lineTo(labelX - 3, en.y);
-            ctx.stroke();
-            ctx.globalAlpha = 1;
-          }
+          // Subtle dashed guide line from last point to right-axis edge, skipping across tick text softly
+          ctx.save();
+          ctx.beginPath();
+          ctx.strokeStyle = en.color;
+          ctx.globalAlpha = 0.22;
+          ctx.lineWidth = 1;
+          ctx.setLineDash([2, 3]);
+          ctx.moveTo(en.x + 5, en.rawY);
+          ctx.lineTo(dotX - 4, en.y);
+          ctx.stroke();
+          ctx.restore();
+
+          // Crisp color bullet + non-overlapping label outside right Y-axis
+          ctx.beginPath();
+          ctx.fillStyle = en.color;
+          ctx.arc(dotX, en.y, 3, 0, Math.PI * 2);
+          ctx.fill();
+
           ctx.fillStyle = en.color;
           ctx.fillText(en.text, labelX, en.y);
         });
@@ -1388,15 +1400,20 @@
       const datasets = [];
       (surv.haiAnnualSeries || []).forEach(series => {
         const ptMap = {};
+        let lastPointVal = null;
         (series.points || []).forEach(pt => {
-          ptMap[pt.period] = state.haiMetric === 'blood' ? pt.blood : pt.nonBlood;
+          const v = state.haiMetric === 'blood' ? pt.blood : pt.nonBlood;
+          ptMap[pt.period] = v;
+          if (v !== null && v !== undefined) lastPointVal = v;
         });
         const spc = state.haiMetric === 'blood' ? (series.bloodSpc || {}) : (series.nonBloodSpc || {});
-        const valStr = (spc.evalValue !== null && spc.evalValue !== undefined) ? spc.evalValue : '-';
+        const evalVal = (spc.evalValue !== null && spc.evalValue !== undefined) ? spc.evalValue : lastPointVal;
+        const valStr = (evalVal !== null && evalVal !== undefined) ? evalVal : '-';
         const statusShort = spc.label ? spc.label.replace(/\s+/g, '') : '';
         datasets.push({
           label: series.pathogen + (state.haiMetric === 'blood' ? ' (혈액)' : ' (혈액외)'),
           endLabelText: series.pathogen + ' ' + valStr + (statusShort ? ' ' + statusShort : ''),
+          endLabelShort: series.pathogen + ' ' + valStr,
           data: labels.map(ym => (ptMap[ym] !== undefined ? ptMap[ym] : null)),
           borderColor: palette[series.pathogen] || '#64748b',
           backgroundColor: palette[series.pathogen] || '#64748b',
@@ -1408,15 +1425,21 @@
       });
 
       const creMap = {};
-      ((surv.creSeries && surv.creSeries.current) || []).forEach(pt => { creMap[pt.period] = pt.count; });
+      let lastCreVal = null;
+      ((surv.creSeries && surv.creSeries.current) || []).forEach(pt => {
+        creMap[pt.period] = pt.count;
+        if (pt.count !== null && pt.count !== undefined) lastCreVal = pt.count;
+      });
       const creStats = surv.creStats || {};
       const creStatusShort = creStats.label ? creStats.label.replace(/\s+/g, '') : '';
-      const creEndVal = (creStats.evalValue !== null && creStats.evalValue !== undefined)
-        ? Number(creStats.evalValue).toLocaleString()
+      const creNum = (creStats.evalValue !== null && creStats.evalValue !== undefined) ? creStats.evalValue : lastCreVal;
+      const creEndVal = (creNum !== null && creNum !== undefined)
+        ? Number(creNum).toLocaleString()
         : '-';
       datasets.push({
         label: '2급 CRE 월별 신고건수 (우측 축)',
         endLabelText: 'CRE ' + creEndVal + (creStats.isPartialLatest ? '*' : '') + (creStatusShort ? ' ' + creStatusShort : ''),
+        endLabelShort: 'CRE ' + creEndVal,
         data: labels.map(ym => (creMap[ym] !== undefined ? creMap[ym] : null)),
         borderColor: '#7c3aed',
         backgroundColor: 'rgba(124, 58, 237, 0.1)',
@@ -1427,7 +1450,7 @@
         pointRadius: 3.5
       });
 
-      const isNarrow = window.innerWidth < 600;
+      const isNarrow = window.innerWidth < 640;
       const ctx = document.getElementById('dualAxisChart').getContext('2d');
       if (state.chart) state.chart.destroy();
       state.chart = new Chart(ctx, {
@@ -1437,7 +1460,7 @@
         options: {
           responsive: true,
           maintainAspectRatio: false,
-          layout: { padding: { right: isNarrow ? 128 : 162, top: 8, bottom: 2 } },
+          layout: { padding: { right: isNarrow ? 98 : 165, top: 8, bottom: 2 } },
           interaction: { mode: 'index', intersect: false },
           plugins: {
             legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } }
