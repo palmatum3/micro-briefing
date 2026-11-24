@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="robots" content="noindex, nofollow" />
-  <title>임상미생물 주간 브리핑 v8.4.2</title>
+  <title>임상미생물 주간 브리핑 v8.4.3</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
   <style>
     :root {
@@ -621,6 +621,42 @@
       margin-right: 4px;
       vertical-align: -1px;
     }
+    .trend-sync-bar {
+      background: #ffffff;
+      border: 1px solid #cbd5e1;
+      border-left: 4px solid #0f172a;
+      border-radius: 12px;
+      padding: 12px 16px;
+      margin-bottom: 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+      box-shadow: 0 2px 8px rgba(15, 23, 42, 0.05);
+    }
+    .trend-sync-left {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .trend-sync-label {
+      font-size: 0.84rem;
+      font-weight: 800;
+      color: #0f172a;
+      white-space: nowrap;
+    }
+    .trend-pending-note {
+      font-size: 0.77rem;
+      font-weight: 700;
+      color: #92400e;
+      background: #fffbeb;
+      border: 1px solid #fde68a;
+      border-radius: 999px;
+      padding: 4px 11px;
+      display: none;
+    }
     .mds-dynamics-bar {
       display: flex;
       flex-wrap: wrap;
@@ -1106,7 +1142,7 @@
     <div class="topbar-inner">
       <div class="brand-row">
         <div>
-          <div class="brand-title">임상미생물 주간 브리핑 <span class="ver-pill">v8.4.2</span></div>
+          <div class="brand-title">임상미생물 주간 브리핑 <span class="ver-pill">v8.4.3</span></div>
           <div class="brand-sub" id="brandSub">GitHub Pages 메인 대시보드 · 데이터 불러오는 중...</div>
         </div>
         <div class="meta-actions">
@@ -1381,7 +1417,7 @@
       <div class="toolbar" style="justify-content: space-between;">
         <div class="pill-group">
           <button class="pill-btn active" id="paperSubList" type="button">전체 논문 목록 <span id="cntPaperSubList"></span></button>
-          <button class="pill-btn" id="paperSubTrends" type="button">🧭 논문 트렌드 · MDS 맵 &amp; 3개월 심층 브리핑</button>
+          <button class="pill-btn" id="paperSubTrends" type="button">🧭 분기별 논문 트렌드 · MDS 맵 &amp; 분기 브리핑</button>
         </div>
       </div>
 
@@ -1426,18 +1462,26 @@
         </div>
       </div>
 
-      <!-- 서브탭 2: 논문 트렌드 (위: MDS 동시출현 클러스터 맵 / 아래: 최근 3개월 심층 거시 브리핑) -->
+      <!-- 서브탭 2: 분기별 논문 트렌드 (공통 분기 선택 -> ① 상단 MDS 맵 -> ② 하단 분기 브리핑 1:1 동기화) -->
       <div id="paperPaneTrends" style="display:none;">
-        <!-- ① 상단: 다차원 척도법(MDS) 고정 좌표 동시출현 버블 맵 -->
+        <!-- 공통 분기 선택 바 (완료 분기만 노출 · 상단 MDS & 하단 브리핑 동시 전환) -->
+        <div class="trend-sync-bar">
+          <div class="trend-sync-left">
+            <span class="trend-sync-label">📅 완료 분기 선택 (지도·브리핑 동시 연동)</span>
+            <div class="pill-group" id="mdsPeriodPills"></div>
+          </div>
+          <span class="trend-pending-note" id="mdsPendingNotice"></span>
+        </div>
+
+        <!-- ① 상단: 동적 분기별 MDS 키워드 클러스터 맵 -->
         <div class="mds-panel">
           <div class="section-head" style="margin-bottom:10px;">
             <div>
-              <h2 class="section-title">🕸️ 동적 분기별 MDS 키워드 클러스터 맵 (이전 분기 좌표 참조 · 신규/이탈 자동 추적)</h2>
-              <div class="section-sub" id="mdsPeriodSubtitle">매 3개월 분기마다 핵심 키워드를 동적 추출하며, 이전 분기 좌표를 Procrustes 정렬로 참조해 유지·신규(🆕)·이탈(📉) 변화를 추적합니다.</div>
+              <h2 class="section-title">🕸️ 분기별 MDS 키워드 클러스터 맵 (이전 분기 좌표 참조 · 신규/이탈 추적)</h2>
+              <div class="section-sub" id="mdsPeriodSubtitle">고정 캘린더 분기(1~3 / 4~6 / 7~9 / 10~12월) 종료 후 집계되며, 이전 분기 좌표를 참조해 유지·신규(🆕)·이탈(📉) 변화를 추적합니다.</div>
             </div>
           </div>
           <div class="toolbar" style="margin-bottom:10px;">
-            <div class="pill-group" id="mdsPeriodPills"></div>
             <div class="pill-group" id="mdsDomainPills">
               <button class="pill-btn active" data-domain="all" type="button">전체 영역</button>
               <button class="pill-btn" data-domain="pathogen" type="button">🦠 균종</button>
@@ -1518,12 +1562,12 @@
           </div>
         </div>
 
-        <!-- ② 하단: 최근 3개월 학술 흐름 심층 거시 브리핑 (고퀄리티 4대 영역) -->
+        <!-- ② 하단: 선택 분기 임상미생물 · 감염병 핵심 브리핑 (상단 MDS와 1:1 기간 동기화) -->
         <div class="macro-box">
           <div class="macro-head-row">
             <div style="font-size:1.02rem; font-weight:800; color:#0f172a; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-              <span>🧭 최근 3개월 임상미생물 · 감염병 심층 거시 브리핑</span>
-              <span class="badge b-domestic" id="macroPeriodBadge">최근 3개월</span>
+              <span id="macroSectionTitle">🧭 분기별 임상미생물 · 감염병 핵심 브리핑</span>
+              <span class="badge b-domestic" id="macroPeriodBadge">완료 분기</span>
             </div>
             <span class="section-sub" id="macroMetaInfo"></span>
           </div>
@@ -1531,7 +1575,7 @@
           <div class="macro-overview" id="macroOverview">-</div>
           <div class="macro-grid" id="macroPillarsGrid"></div>
           <div class="macro-watch-box" id="macroWatchBox" style="display:none;">
-            <div class="macro-watch-title">🔭 향후 1분기 주목할 핵심 관전 포인트</div>
+            <div class="macro-watch-title">🔭 다음 분기 검사실 체크 포인트 (3선)</div>
             <ul class="macro-watch-list" id="macroWatchList"></ul>
           </div>
         </div>
@@ -1569,7 +1613,7 @@
     <div class="footer-note">
       본 대시보드는 공개 학술 초록(PubMed·Crossref) 및 공식 감염병 통계(KDCA·WHO) 기반 참고 요약입니다.
       AI 해석은 원문 사실과 분리 표기되며, 최종 임상·검사실 의사결정 시 반드시 원문을 확인하세요.
-      (북마크는 현재 기기 브라우저에 개인별 저장 · GitHub Pages 메인 단일화 v8.4.2)
+      (북마크는 현재 기기 브라우저에 개인별 저장 · GitHub Pages 메인 단일화 v8.4.3)
     </div>
   </main>
 
@@ -2685,24 +2729,38 @@
       const pt = getPaperTrendsData();
       const qs = (pt.quarters || []).slice();
       const pillsEl = document.getElementById('mdsPeriodPills');
+      const spanMap = { '1': '1~3월', '2': '4~6월', '3': '7~9월', '4': '10~12월' };
       const btns = [];
       qs.forEach(qk => {
         const pobj = (pt.periods && pt.periods[qk]) || {};
-        const shortLbl = qk.replace('-Q', ' Q') + (pobj.paperCount ? (' (' + pobj.paperCount + ')') : '');
+        const m = /^(\d{4})-Q([1-4])$/.exec(qk);
+        const qText = m ? (m[1] + ' Q' + m[2] + ' (' + spanMap[m[2]] + ')') : qk;
+        const shortLbl = qText + (pobj.paperCount ? (' · ' + pobj.paperCount + '편') : '');
         const act = (state.mdsPeriod === qk) ? ' active' : '';
         btns.push('<button class="pill-btn' + act + '" data-period="' + esc(qk) + '" type="button">' + esc(shortLbl) + '</button>');
       });
       const totObj = (pt.periods && pt.periods.total) || {};
       const totAct = (state.mdsPeriod === 'total') ? ' active' : '';
-      btns.push('<button class="pill-btn' + totAct + '" data-period="total" type="button">전체 누적' + (totObj.paperCount ? (' (' + totObj.paperCount + ')') : '') + '</button>');
+      btns.push('<button class="pill-btn' + totAct + '" data-period="total" type="button">완료 분기 누적' + (totObj.paperCount ? (' · ' + totObj.paperCount + '편') : '') + '</button>');
       pillsEl.innerHTML = btns.join('');
       pillsEl.querySelectorAll('.pill-btn').forEach(b => {
         b.addEventListener('click', () => {
           state.mdsPeriod = b.dataset.period;
           pillsEl.querySelectorAll('.pill-btn').forEach(x => x.classList.toggle('active', x === b));
           renderMdsBubbleMap();
+          renderMacroBriefing();
         });
       });
+
+      const pending = pt.pendingQuarters || [];
+      const pendEl = document.getElementById('mdsPendingNotice');
+      if (pendEl && pending.length) {
+        const pLast = pending[pending.length - 1];
+        pendEl.textContent = '⏳ ' + pLast.label + ' 진행 중 (' + pLast.paperCount + '편) — ' + pLast.availableAfter + ' 종료 후 자동 분석';
+        pendEl.style.display = 'inline-block';
+      } else if (pendEl) {
+        pendEl.style.display = 'none';
+      }
     }
 
     function setPaperSubView(viewName) {
@@ -2714,13 +2772,18 @@
       document.getElementById('paperPaneTrends').style.display = isTrends ? 'block' : 'none';
       if (isTrends) {
         renderMdsBubbleMap();
+        renderMacroBriefing();
       }
     }
 
     function renderMacroBriefing() {
       const pt = getPaperTrendsData();
-      const mb = pt.macroBriefing || {};
-      document.getElementById('macroPeriodBadge').textContent = mb.period_label || '최근 3개월';
+      const pObj = getActiveMdsPeriodObj();
+      const mb = (pObj && pObj.macroBriefing) ? pObj.macroBriefing : (pt.macroBriefing || {});
+      const pLabel = mb.period_label || (pObj && pObj.label) || '완료 분기';
+      const titleEl = document.getElementById('macroSectionTitle');
+      if (titleEl) titleEl.textContent = '🧭 ' + pLabel + ' 핵심 학술 브리핑';
+      document.getElementById('macroPeriodBadge').textContent = pLabel;
       const metaParts = [];
       if (mb.paper_count) metaParts.push('필독·주목 ' + mb.paper_count + '편 심층 종합');
       if (mb.model) metaParts.push('분석 엔진: ' + mb.model);
