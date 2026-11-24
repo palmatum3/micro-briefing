@@ -32,7 +32,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 import requests
 
-CODE_VERSION = "v8.3.5"
+CODE_VERSION = "v8.4.2"
 KST = datetime.timezone(datetime.timedelta(hours=9))
 
 SHEET_ITEMS = "items"
@@ -42,6 +42,69 @@ SHEET_KDCA_SURV = "kdca_surveillance"
 SHEET_HAI_STATS = "hai_stats"
 SHEET_PILOT = "pilot_v82"
 SHEET_DRYRUN = "dryrun_v83"
+TREND_CONFIG_KEY = "paper_macro_trend_v841"
+
+# v8.4.2 동적 분기별 MDS 키워드 추출 풀 (임상미생물·감염병 핵심 44개 개념 + 미등록 신종 용어 자동 발굴)
+DYNAMIC_CONCEPT_POOL_V842: List[Tuple[str, str, str, str]] = [
+    # Pathogens (균종·감염병)
+    ("tb_ntm", "결핵균·NTM", "pathogen", r"\b(?:tuberculosis|Mycobacterium|abscessus|NTM|MTB)\b"),
+    ("influenza", "인플루엔자", "pathogen", r"\b(?:influenza|H3N2|H1N1|subclade K)\b"),
+    ("rsv", "RSV", "pathogen", r"\b(?:RSV|respiratory syncytial)\b"),
+    ("covid19", "COVID-19·SARS-CoV-2", "pathogen", r"\b(?:SARS-CoV-2|COVID-19|coronavirus)\b"),
+    ("cre_entero", "CRE·장내세균목", "pathogen", r"\b(?:CRE|CPE|Enterobacterales|Klebsiella pneumoniae|Escherichia coli|carbapenemase|ertapenem-resistant)\b"),
+    ("aspergillus", "아스페르길루스·사상균", "pathogen", r"\b(?:Aspergillus|aspergillosis|mucormycosis|mold|mould)\b"),
+    ("candida", "Candida·C. auris", "pathogen", r"\b(?:Candida|Candidozyma|candidemia|candidiasis)\b"),
+    ("staph_mrsa", "황색포도알균·MRSA", "pathogen", r"\b(?:Staphylococcus aureus|MRSA|MSSA|VRSA)\b"),
+    ("pa_ab", "녹농균·아시네토박터", "pathogen", r"\b(?:Pseudomonas aeruginosa|Acinetobacter baumannii|CRAB|DTR)\b"),
+    ("hiv", "HIV·AIDS", "pathogen", r"\b(?:HIV|HIV-1|antiretroviral|PrEP)\b"),
+    ("enterococcus_vre", "장알균·VRE", "pathogen", r"\b(?:Enterococcus|VRE|enterococcal)\b"),
+    ("cdiff", "C. difficile", "pathogen", r"\b(?:Clostridioides difficile|C\. difficile|CDI)\b"),
+    ("measles", "홍역(Measles)", "pathogen", r"\b(?:measles|morbillivirus)\b"),
+    ("malaria", "말라리아", "pathogen", r"\b(?:malaria|Plasmodium)\b"),
+    ("hepatitis", "바이러스 간염(HBV·HCV·HEV)", "pathogen", r"\b(?:hepatitis [ABCE]|HBV|HCV|HEV|HBsAg)\b"),
+    ("sti_syph_gono", "매독·임균·성매개감염", "pathogen", r"\b(?:syphilis|Treponema|gonorrhoeae|Chlamydia|sexually transmitted)\b"),
+    ("strep_pneumo_gas", "폐렴구균·A군연쇄구균", "pathogen", r"\b(?:Streptococcus pneumoniae|pneumococcal|Streptococcus pyogenes|Group A Streptococcus)\b"),
+    ("arbovirus", "뎅기·치쿤구니야·모기매개", "pathogen", r"\b(?:dengue|chikungunya|Zika|Oropouche|arboviral|West Nile)\b"),
+    ("vhf_ebola_lassa", "출혈열(에볼라·라싸·CCHF)", "pathogen", r"\b(?:Ebola|Bundibugyo|Lassa|Crimean-Congo|CCHF|Marburg|Nipah)\b"),
+    ("endocarditis", "감염성 심내막염(IE)", "pathogen", r"\b(?:infective endocarditis|endocarditis|Duke criteria)\b"),
+    ("sepsis_bsi", "패혈증·균혈증(BSI)", "pathogen", r"\b(?:sepsis|septic shock|bacteremia|bloodstream infection)\b"),
+    ("cryptococcus", "크립토콕쿠스·풍토진균", "pathogen", r"\b(?:Cryptococcus|cryptococcosis|Histoplasma|histoplasmosis|blastomycosis)\b"),
+    ("enteric_bact", "장관세균(살모넬라·캄필로)", "pathogen", r"\b(?:Salmonella|Campylobacter|Shigella|typhoid|cholera)\b"),
+    ("mpox", "엠폭스(Mpox)", "pathogen", r"\b(?:mpox|monkeypox)\b"),
+    ("adenovirus_cmv", "아데노·CMV·이식바이러스", "pathogen", r"\b(?:adenovirus|cytomegalovirus|CMV|BK virus|JC virus|HTLV)\b"),
+    # Antimicrobials / Vaccines (항균제·백신)
+    ("carbapenem", "카바페넴계", "drug", r"\b(?:carbapenem|meropenem|imipenem|ertapenem)\b"),
+    ("new_bl_bli", "신약 BL/BLI", "drug", r"\b(?:aztreonam-avibactam|relebactam|funobactam|zidebactam|ceftazidime-avibactam|vaborbactam|BL/BLI)\b"),
+    ("cefiderocol", "세피데로콜", "drug", r"\b(?:cefiderocol)\b"),
+    ("glyco_oxa", "반코마이신·리네졸리드", "drug", r"\b(?:vancomycin|linezolid|daptomycin|teicoplanin)\b"),
+    ("antifungal", "항진균제(아졸·암포·에키노)", "drug", r"\b(?:voriconazole|posaconazole|amphotericin|echinocandin|caspofungin|isavuconazole|antifungal)\b"),
+    ("anti_tb_drug", "리팜피신·신규 항결핵제", "drug", r"\b(?:rifampicin|rifampin|isoniazid|bedaquiline|ganfeborole|BTZ-043)\b"),
+    ("antiviral", "항바이러스제·LA-ART", "drug", r"\b(?:baloxavir|remdesivir|nirmatrelvir|tenofovir|cabotegravir|dolutegravir|doravirine|rilpivirine)\b"),
+    ("vaccine", "백신·면역원성", "drug", r"\b(?:vaccine|vaccination|immunogenicity|monoclonal antibody|nirsevimab)\b"),
+    ("phage", "박테리오파지 치료", "drug", r"\b(?:bacteriophage|phage therapy|phage susceptibility)\b"),
+    ("asp_short_course", "항균제 스튜어드십·단기치료", "drug", r"\b(?:stewardship|short-course|treatment duration|step-down|antibiogram|WISCA)\b"),
+    # Platforms / Diagnostics (장비·진단법)
+    ("ngs_wgs", "NGS·mNGS·WGS", "platform", r"\b(?:mNGS|metagenomic|whole genome sequencing|WGS|tNGS|cgMLST|next-generation sequencing)\b"),
+    ("rapid_ast", "신속 AST·감수성법", "platform", r"\b(?:rapid AST|rapid susceptibility|disk diffusion|broth microdilution|BMD|Etest|mCIM|AST|EUCAST|CLSI)\b"),
+    ("ai_ml", "AI·머신러닝·LLM", "platform", r"\b(?:machine learning|artificial intelligence|AI/ML|deep learning|automated.*microscopy|large language model|LLM)\b"),
+    ("ddpcr_poct", "ddPCR·CRISPR·POCT", "platform", r"\b(?:ddPCR|droplet digital|CRISPR|RPA|point-of-care|POCT|lateral flow)\b"),
+    ("maldi_ftir", "MALDI-TOF·IR Biotyper", "platform", r"\b(?:MALDI-TOF|IR Biotyper|FT-IR|mass spectrometry)\b"),
+    ("multiplex_pcr", "다중 PCR 패널", "platform", r"\b(?:BioFire|FilmArray|QIAstat|multiplex PCR|syndromic panel|Xpert)\b"),
+    ("blood_culture", "혈액배양·추적배양", "platform", r"\b(?:blood culture|BCID|follow-up blood culture)\b"),
+    ("tdm_pkpd", "약물농도감시(TDM)·PK/PD", "platform", r"\b(?:therapeutic drug monitoring|TDM|pharmacokinetic|PK/PD)\b"),
+    ("serology_ag", "항원·항체 신속/면역검사", "platform", r"\b(?:rapid antigen|serology|IgM|IgG|Elecsys|VIDAS|VirClia|galactomannan)\b"),
+]
+
+# 비지도 신종 약제/병원체 자동 발굴용 제외 일반어
+NOVEL_TERM_STOPWORDS: Set[str] = {
+    "antibiotic", "antibiotics", "antimicrobial", "antimicrobials", "bacterial", "clinical",
+    "diagnostic", "infection", "infections", "infectious", "microbiology", "molecular",
+    "multicenter", "patients", "prospective", "randomized", "resistance", "resistant",
+    "retrospective", "surveillance", "susceptibility", "systematic", "treatment", "therapy",
+    "hospital", "united", "states", "national", "global", "review", "cohort", "trial",
+    "study", "evaluation", "performance", "detection", "diagnosis", "management", "outcomes",
+    "children", "adults", "pediatric", "disease", "syndrome", "severe", "acute", "chronic",
+}
 
 # 옵션 2: 최상위 리뷰 저널 6종은 서술형 종설·리뷰(78점) 상한(Cap)만 해제 (증례·기초연구 Cap은 유지)
 TOP_REVIEW_JOURNALS_NO_REVIEW_CAP: Set[str] = {
@@ -236,7 +299,7 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 OUTPUT_JSON_PATH = ROOT_DIR / "docs" / "data" / "dashboard.json"
 
 HTTP = requests.Session()
-HTTP.headers.update({"User-Agent": "ClinicalMicroBriefing/8.3.5 (Academic Surveillance Bot)"})
+HTTP.headers.update({"User-Agent": "ClinicalMicroBriefing/8.4.2 (Academic Surveillance Bot)"})
 
 
 def now_kst() -> datetime.datetime:
@@ -2595,6 +2658,769 @@ def check_kdca_guidelines_live_offline(notifiable_list: List[Dict[str, Any]]) ->
     return notifiable_list, releases, f"검증 2026 직링크 {direct_cnt}/{len(notifiable_list)}건 · 출간 {len(releases)}건", direct_cnt
 
 
+def upsert_config_value(ss, key: str, value: str, description: str = "") -> None:
+    """config 시트에서 해당 key 행을 찾아 value를 갱신하거나 없으면 새 행으로 추가"""
+    ws = ss.worksheet(SHEET_CONFIG)
+    rows = ws.get_all_values()
+    for idx, r in enumerate(rows[1:], start=2):
+        if r and r[0].strip() == key:
+            ws.update(range_name=f"B{idx}", values=[[value]], value_input_option="RAW")
+            return
+    ws.append_row([key, value, description], value_input_option="RAW")
+
+
+def _jacobi_top2_eigs(B: List[List[float]]) -> Tuple[List[float], List[List[float]]]:
+    """순수 Python Jacobi 고유값 분해 (대칭 행렬 B의 상위 2개 고유값·고유벡터 반환)"""
+    n = len(B)
+    A = [row[:] for row in B]
+    V = [[1.0 if i == j else 0.0 for j in range(n)] for i in range(n)]
+    for _ in range(120):
+        p, q, max_val = 0, 1, 0.0
+        for i in range(n):
+            for j in range(i + 1, n):
+                av = abs(A[i][j])
+                if av > max_val:
+                    max_val = av
+                    p, q = i, j
+        if max_val < 1e-10:
+            break
+        diff = A[q][q] - A[p][p]
+        if abs(A[p][q]) < 1e-12 * abs(diff):
+            t = A[p][q] / diff
+        else:
+            phi = diff / (2.0 * A[p][q])
+            t = 1.0 / (abs(phi) + math.sqrt(phi * phi + 1.0))
+            if phi < 0:
+                t = -t
+        c = 1.0 / math.sqrt(t * t + 1.0)
+        s = t * c
+        tau = s / (1.0 + c)
+        h = t * A[p][q]
+        A[p][p] -= h
+        A[q][q] += h
+        A[p][q] = A[q][p] = 0.0
+        for r in range(n):
+            if r != p and r != q:
+                arp, arq = A[r][p], A[r][q]
+                A[r][p] = A[p][r] = arp - s * (arq + tau * arp)
+                A[r][q] = A[q][r] = arq + s * (arp - tau * arq)
+            vrp, vrq = V[r][p], V[r][q]
+            V[r][p] = vrp - s * (vrq + tau * vrp)
+            V[r][q] = vrq + s * (vrp - tau * vrq)
+    eigs = [(A[i][i], i) for i in range(n)]
+    eigs.sort(reverse=True)
+    vals = [max(eigs[0][0], 1e-6), max(eigs[1][0], 1e-6)]
+    vecs = [[V[r][eigs[0][1]], V[r][eigs[1][1]]] for r in range(n)]
+    return vals, vecs
+
+
+def _date_to_quarter_key(pub_date: str) -> str:
+    s = safe_str(pub_date)[:7]
+    if len(s) < 7 or not s[:4].isdigit() or not s[5:7].isdigit():
+        return ""
+    yr = s[:4]
+    mo = int(s[5:7])
+    q = (mo - 1) // 3 + 1
+    return f"{yr}-Q{q}"
+
+
+def build_fallback_macro_trend(active_papers: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """[AI 비용 0원] 최근 3개월 롤링 필독·주목 논문 기반 고밀도 구조화 거시 요약 폴백"""
+    valid_months = sorted({safe_str(p.get("pub_date"))[:7] for p in active_papers if len(safe_str(p.get("pub_date"))) >= 7})
+    recent_months = valid_months[-3:] if valid_months else []
+    period_label = f"{recent_months[0]} ~ {recent_months[-1]} (최근 {len(recent_months)}개월)" if recent_months else "최근 3개월"
+    pool = [
+        p for p in active_papers
+        if safe_str(p.get("pub_date"))[:7] in recent_months
+        and safe_str(p.get("importance")) in ("Must-Read", "High")
+    ]
+    pool.sort(key=lambda x: (1 if x.get("critical_exception") else 0, x.get("importance_score") or 0), reverse=True)
+
+    ce_papers = [p for p in pool if p.get("critical_exception")]
+    must_papers = [p for p in pool if p.get("importance") == "Must-Read"]
+
+    def build_pillar(
+        title: str,
+        cats: Tuple[str, ...],
+        default_summary: str,
+        default_checkpoint: str,
+    ) -> Dict[str, Any]:
+        sub = [p for p in pool if safe_str(p.get("topic_category")) in cats]
+        ev_list = []
+        for p in sub[:3]:
+            src = safe_str(p.get("source"))
+            pd = safe_str(p.get("pub_date"))[5:]
+            sc = p.get("importance_score") or 0
+            ce_tag = f" · 예외필독 {p['critical_exception']}" if p.get("critical_exception") else ""
+            fact_first = re.sub(r"\s+", " ", safe_str(p.get("fact_summary_ko")))
+            fact_first = re.sub(r"^[•\-\s]*\[[^\]]+\]\s*", "", fact_first)[:135]
+            ev_list.append(f"[{src} {pd} · {sc}점{ce_tag}] {safe_str(p.get('title_ko'))}: {fact_first}...")
+        if not ev_list:
+            ev_list = ["해당 기간 선별된 핵심 논문 데이터가 누적 중입니다."]
+        first_note = re.sub(r"^\[[^\]]+\]\s*", "", safe_str(sub[0].get("ai_clinical_note")))[:180] if sub else ""
+        return {
+            "title": title,
+            "trend_summary": default_summary,
+            "key_evidence": ev_list,
+            "lab_checkpoint": first_note or default_checkpoint,
+        }
+
+    pillars = {
+        "diagnostics": build_pillar(
+            "분자진단 · 검사실 워크플로우",
+            ("분자진단·신기술",),
+            "상용 다중 PCR 패널의 위양성 검증(용해 곡선 분석 후 알고리듬)과 인플루엔자 변이(subclade K) 대응 프라이머 업데이트 등 기존 분자진단 사각지대 보완이 핵심 화두입니다. 동시에 양성 혈액배양 직접 동정·AST 및 ddPCR·cfDNA 비침습 진단이 검사소요시간(TAT) 단축을 주도하고 있습니다.",
+            "상용 다중 PCR 패널의 위양성 주의 타겟(Campylobacter·Norovirus 등) 판독 기준을 점검하고, 아형 미결정 인플루엔자 A형 검체의 프라이머 변이 불일치 가능성을 모니터링하십시오.",
+        ),
+        "amr_ast": build_pillar(
+            "항균제 내성 · 감수성 시험(AST)",
+            ("항균제 내성·AST",),
+            "카바페네마제 음성이라도 포린 변이·효소 과발현을 동반한 에르타페넴 내성(ETP-R) 장내세균의 치료 실패 위험이 부각되었으며, MBL 생성 CRE 대응을 위한 aztreonam-avibactam 상용 확산법 및 신속 AST 검증이 활발히 보고되고 있습니다.",
+            "침습 검체에서 ETP-R이면서 이미페넴·메로페넴 감수성인 균주는 정확한 MIC 수치와 주의 주석을 병기하고, MBL 생성 CRE 대비 AZA 감수성 시험 프로토콜을 정비하십시오.",
+        ),
+        "therapy_asp": build_pillar(
+            "임상 감염 치료 · 스튜어드십(ASP)",
+            ("임상 감염·치료",),
+            "다기관 3상 무작위 대조시험을 통해 중증 원내폐렴(HABP/VABP) 신약 베타락타마제 억제제 복합제의 비열등성이 입증되고, 단순 균혈증의 단기 항균제 요법 및 MSSA 균혈증의 48시간 음성 후 불필요한 추적 혈액배양 축소 근거가 강화되고 있습니다.",
+            "혈액배양 신속 동정·감수성 보고와 원내 항균제 스튜어드십(ASP) 팀 연계를 강화하여, 단순 균혈증의 조기 표적 치료 전환과 불필요한 반복 혈액배양 의뢰를 줄이십시오.",
+        ),
+        "epidemiology_ic": build_pillar(
+            "신종·유행 병원체 · 감염관리 역학",
+            ("감염관리·역학",),
+            "인플루엔자 A(H3N2) subclade K 유행 모니터링, C. auris 글로벌 clade 다변화 및 내성 양상, 그리고 cgMLST·IR Biotyper를 활용한 원내 집단발생 신속 추적 체계 구축이 주요 흐름을 형성하고 있습니다.",
+            "원내 C. auris 및 다제내성균 집단발생 감시를 위해 MALDI-TOF·분자형별 분석 연계를 유지하고, 계절성 호흡기 바이러스 유행기 다중 PCR 시약 및 격리 대응 체계를 점검하십시오.",
+        ),
+    }
+
+    return {
+        "period_label": period_label,
+        "headline": f"{period_label} 핵심 논문 {len(pool)}편(필독 {len(must_papers)}·예외 {len(ce_papers)}) 종합: 상용 분자진단 사각지대 보완과 다제내성균 정밀 AST·단기 표적 치료로의 전환이 가속화되고 있습니다.",
+        "executive_overview": (
+            f"{period_label} 동안 주요 10개 저널에서 선별된 필독·주목 논문 {len(pool)}편을 종합한 결과, 임상미생물·감염병 분야는 "
+            "① 상용 다중 분자진단 시약의 위양성·변이 검출 한계를 분석 후 알고리듬과 프라이머 개정으로 보완하는 품질 고도화, "
+            "② ETP-R 및 MBL 생성 CRE 등 고위험 내성균에 대한 정밀 MIC 보고와 신약 BL/BLI 감수성 검증 확대, "
+            "③ 대규모 3상 RCT 기반의 항생제 투여 기간 단축 및 진단 스튜어드십 정착이라는 세 축을 중심으로 재편되고 있습니다."
+        ),
+        "pillars": pillars,
+        "watch_points": [
+            "상용 다중 PCR 패널(위장관·호흡기·뇌수막염)의 위양성 및 변이주 검출 한계(E2)에 대한 원내 검증 및 판독 주석 반영",
+            "MBL 생성 CRE 및 카바페네마제 음성 ETP-R 장내세균에 대한 신약 BL/BLI(AZA 등) 감수성 검사법 도입 준비",
+            "신속 혈액배양 직접 동정·AST 도입과 연계한 원내 항균제 스튜어드십(ASP) 및 불필요한 추적 혈액배양 감축",
+        ],
+        "paper_count": len(pool),
+        "updated_at": now_kst_str(),
+        "model": "structured-digest(0원 · collect 시 AI 심층 갱신)",
+    }
+
+
+def generate_macro_trend_briefing_ai(
+    active_papers: List[Dict[str, Any]],
+    deep_model: str,
+    fallback_model: str,
+    api_key: str,
+) -> Dict[str, Any]:
+    """최근 3개월 롤링 Must-Read·High 논문 종합 고퀄리티 AI 거시 브리핑 생성 (thinking: high, ~₩95/회)"""
+    valid_months = sorted({safe_str(p.get("pub_date"))[:7] for p in active_papers if len(safe_str(p.get("pub_date"))) >= 7})
+    recent_months = valid_months[-3:] if valid_months else []
+    if not recent_months:
+        return build_fallback_macro_trend(active_papers)
+
+    period_label = f"{recent_months[0]} ~ {recent_months[-1]} (최근 {len(recent_months)}개월)"
+    pool = [
+        p for p in active_papers
+        if safe_str(p.get("pub_date"))[:7] in recent_months
+        and safe_str(p.get("importance")) in ("Must-Read", "High")
+    ]
+    pool.sort(key=lambda x: (1 if x.get("critical_exception") else 0, x.get("importance_score") or 0), reverse=True)
+    if not pool:
+        return build_fallback_macro_trend(active_papers)
+
+    sampled = pool[:110]
+    lines = []
+    for idx, p in enumerate(sampled, 1):
+        fact_short = re.sub(r"\s+", " ", safe_str(p.get("fact_summary_ko")))[:320]
+        note_short = re.sub(r"\s+", " ", re.sub(r"^\[[^\]]+\]\s*", "", safe_str(p.get("ai_clinical_note"))))[:180]
+        ce = f" [예외필독 {p['critical_exception']}]" if p.get("critical_exception") else ""
+        lines.append(
+            f"{idx}. [{p.get('source')}|{p.get('pub_date')}|{p.get('importance')} {p.get('importance_score')}점{ce}|{p.get('topic_category')}] "
+            f"{p.get('title_ko')}\n   - 핵심사실: {fact_short}\n   - 임상검사실포인트: {note_short}"
+        )
+
+    prompt = "\n".join([
+        "당신은 대한민국 상급종합병원 진단검사의학과(임상미생물학·분자진단·항균제 내성) 전문의를 지원하는 수석 학술 에디터입니다.",
+        f"아래는 {period_label} 동안 주요 10개 의학·미생물 저널에서 선별된 필독(Must-Read)·주목(High) 논문 {len(sampled)}편의 정밀 데이터입니다.",
+        "이 3개월 분량의 핵심 근거를 종합하여, 전문의가 학계의 큰 줄기와 검사실 전략을 한눈에 파악할 수 있는 [고퀄리티 3개월 학술 거시 브리핑]을 JSON으로 작성하십시오.",
+        "",
+        "[작성 원칙 — 최고 수준 전문성 유지]",
+        "1. headline: 최근 3개월 임상미생물·감염병 학계의 가장 핵심적인 패러다임 전환을 담은 1문장 헤드라인(75자 이내).",
+        "2. executive_overview: 3개월 전체를 조망하는 수석 에디터 총평(3~4문장). 진단 기술의 고도화, 내성균 양상 변화, 임상 치료·스튜어드십의 큰 흐름을 유기적으로 엮어 서술.",
+        "3. pillars (4대 핵심 영역 심층 분석 — diagnostics, amr_ast, therapy_asp, epidemiology_ic):",
+        "   각 영역 객체는 다음 3개 필드를 반드시 포함하십시오:",
+        "   - trend_summary (3~4문장): 단순 논문 나열이 아니라, 해당 영역에서 최근 3개월간 두드러진 학술적 흐름, 방법론적 진전, 기존 기준의 한계 보완 맥락을 깊이 있게 서술.",
+        "   - key_evidence (문자열 배열 2~3개): 해당 흐름을 입증하는 대표 논문 2~3편을 '[저널명 MM-DD] 논문 핵심 내용 + 구체적 수치(n수, 민감도/특이도, OR/HR, 사망률 등) 및 의의' 형식으로 명확히 인용.",
+        "   - lab_checkpoint (1~2문장): 대한민국 대학병원 진단검사의학과 전문의가 원내 검사실(분자진단·배양·MALDI-TOF·AST·정도관리·결과보고 주석·ASP 연계)에서 즉시 점검하거나 대비해야 할 구체적 실행 권고.",
+        "4. watch_points (문자열 배열 3개): 향후 1분기 동안 검사실 검증, 장비·시약 도입, CLSI/EUCAST·KDCA 지침 개정 대비를 위해 주시해야 할 핵심 관전 포인트 3가지.",
+        "5. 엄격 준수: 제공된 논문 목록에 없는 사실·수치·기관명을 절대 지어내지 말고, '참고가 될 것으로 사료됩니다', '중요성을 시사합니다' 같은 뻔한 상용구는 완전히 배제하십시오.",
+        "",
+        "\n".join(lines),
+    ])
+
+    pillar_schema = {
+        "type": "OBJECT",
+        "properties": {
+            "trend_summary": {"type": "STRING"},
+            "key_evidence": {"type": "ARRAY", "items": {"type": "STRING"}},
+            "lab_checkpoint": {"type": "STRING"},
+        },
+        "required": ["trend_summary", "key_evidence", "lab_checkpoint"],
+    }
+
+    schema = {
+        "type": "OBJECT",
+        "properties": {
+            "headline": {"type": "STRING"},
+            "executive_overview": {"type": "STRING"},
+            "pillars": {
+                "type": "OBJECT",
+                "properties": {
+                    "diagnostics": pillar_schema,
+                    "amr_ast": pillar_schema,
+                    "therapy_asp": pillar_schema,
+                    "epidemiology_ic": pillar_schema,
+                },
+                "required": ["diagnostics", "amr_ast", "therapy_asp", "epidemiology_ic"],
+            },
+            "watch_points": {"type": "ARRAY", "items": {"type": "STRING"}},
+        },
+        "required": ["headline", "executive_overview", "pillars", "watch_points"],
+    }
+
+    parsed, used_model = call_gemini_with_fallback(
+        prompt, schema, deep_model, fallback_model, api_key, 0.15, "high", timeout_read=135
+    )
+
+    raw_pillars = parsed.get("pillars") or {}
+    pillar_titles = {
+        "diagnostics": "분자진단 · 검사실 워크플로우",
+        "amr_ast": "항균제 내성 · 감수성 시험(AST)",
+        "therapy_asp": "임상 감염 치료 · 스튜어드십(ASP)",
+        "epidemiology_ic": "신종·유행 병원체 · 감염관리 역학",
+    }
+    clean_pillars: Dict[str, Any] = {}
+    for pk, ptitle in pillar_titles.items():
+        pobj = raw_pillars.get(pk) or {}
+        clean_pillars[pk] = {
+            "title": ptitle,
+            "trend_summary": safe_str(pobj.get("trend_summary")),
+            "key_evidence": [safe_str(x) for x in (pobj.get("key_evidence") or []) if safe_str(x)][:4],
+            "lab_checkpoint": safe_str(pobj.get("lab_checkpoint")),
+        }
+
+    return {
+        "period_label": period_label,
+        "headline": safe_str(parsed.get("headline")),
+        "executive_overview": safe_str(parsed.get("executive_overview")),
+        "pillars": clean_pillars,
+        "watch_points": [safe_str(x) for x in (parsed.get("watch_points") or []) if safe_str(x)][:4],
+        "paper_count": len(sampled),
+        "updated_at": now_kst_str(),
+        "model": f"{used_model}(thinking:high)",
+    }
+
+
+def _mine_novel_clinical_terms(
+    docs_text: List[str],
+    covered_regexes: List[Any],
+    min_df: int = 4,
+    max_novel: int = 3,
+) -> List[Tuple[str, str, str, str]]:
+    """
+    [AI 비용 0원] 사전(44개 핵심 개념)에 아직 등록되지 않은 신약(-bactam/-penem/-conazole/-vir/-mab/-cycline 등)이나
+    신종 병원체·장비 용어가 해당 분기 논문에서 min_df편 이상 등장하면 자동으로 후보 키워드로 승격함.
+    """
+    drug_rx = re.compile(
+        r"\b([a-z]{4,18}(?:bactam|penem|conazole|cycline|mycin|floxacin|cillin|vir|mab|fungin|vancin|zolid|micin))\b",
+        re.IGNORECASE,
+    )
+    term_docs: Dict[str, Set[int]] = {}
+    for idx, txt in enumerate(docs_text):
+        for m in drug_rx.finditer(txt):
+            w = m.group(1).lower()
+            if w in NOVEL_TERM_STOPWORDS or len(w) < 6:
+                continue
+            if any(rx.search(w) for rx in covered_regexes):
+                continue
+            term_docs.setdefault(w, set()).add(idx)
+
+    picked = [(len(dset), w) for w, dset in term_docs.items() if len(dset) >= min_df]
+    picked.sort(reverse=True)
+    out: List[Tuple[str, str, str, str]] = []
+    for _, w in picked[:max_novel]:
+        kid = "novel_" + re.sub(r"[^a-z0-9]+", "_", w)
+        label = w.capitalize()
+        pat = r"\b" + re.escape(w) + r"\b"
+        out.append((kid, label, "drug", pat))
+    return out
+
+
+def _align_procrustes_2d(
+    raw_coords: List[List[float]],
+    node_ids: List[str],
+    prev_positions: Dict[str, Tuple[float, float]],
+    w_px: float = 1000.0,
+    h_px: float = 610.0,
+) -> List[List[float]]:
+    """
+    2D Orthogonal Procrustes 정렬:
+    이전 분기에도 존재했던 공통 키워드들의 좌표를 기준 앵커로 삼아,
+    새 분기 MDS 좌표의 최적 회전·반전·축척·이동을 계산하여 좌표계 뒤집힘(sign-flip)을 방지함.
+    """
+    n = len(node_ids)
+    shared = [i for i, kid in enumerate(node_ids) if kid in prev_positions]
+    if len(shared) < 2:
+        # 첫 기준 분기: 정규화 후 캔버스 중앙 배치
+        mx = sum(c[0] for c in raw_coords) / max(n, 1)
+        my = sum(c[1] for c in raw_coords) / max(n, 1)
+        centered = [[c[0] - mx, c[1] - my] for c in raw_coords]
+        span = max((max(abs(c[0]), abs(c[1])) for c in centered), default=1.0) or 1.0
+        return [[w_px * 0.5 + (c[0] / span) * 375.0, h_px * 0.5 + (c[1] / span) * 215.0] for c in centered]
+
+    # Centroids of shared nodes
+    pmx = sum(raw_coords[i][0] for i in shared) / len(shared)
+    pmy = sum(raw_coords[i][1] for i in shared) / len(shared)
+    qmx = sum(prev_positions[node_ids[i]][0] for i in shared) / len(shared)
+    qmy = sum(prev_positions[node_ids[i]][1] for i in shared) / len(shared)
+
+    ps = [(raw_coords[i][0] - pmx, raw_coords[i][1] - pmy) for i in shared]
+    qs = [(prev_positions[node_ids[i]][0] - qmx, prev_positions[node_ids[i]][1] - qmy) for i in shared]
+
+    # Proper rotation (det = +1)
+    a_pos = sum(px * qx + py * qy for (px, py), (qx, qy) in zip(ps, qs))
+    b_pos = sum(px * qy - py * qx for (px, py), (qx, qy) in zip(ps, qs))
+    score_pos = math.hypot(a_pos, b_pos)
+
+    # Improper rotation / reflection (det = -1, mirror x)
+    a_neg = sum(-px * qx + py * qy for (px, py), (qx, qy) in zip(ps, qs))
+    b_neg = sum(-px * qy - py * qx for (px, py), (qx, qy) in zip(ps, qs))
+    score_neg = math.hypot(a_neg, b_neg)
+
+    use_flip = score_neg > score_pos
+    theta = math.atan2(b_neg, a_neg) if use_flip else math.atan2(b_pos, a_pos)
+    ct, st = math.cos(theta), math.sin(theta)
+
+    norm_p = math.sqrt(sum(px * px + py * py for px, py in ps))
+    norm_q = math.sqrt(sum(qx * qx + qy * qy for qx, qy in qs))
+    scale = (norm_q / norm_p) if norm_p > 1e-6 else 260.0
+    scale = max(140.0, min(520.0, scale))
+
+    aligned: List[List[float]] = []
+    for i in range(n):
+        rx = raw_coords[i][0] - pmx
+        ry = raw_coords[i][1] - pmy
+        if use_flip:
+            rx = -rx
+        tx = qmx + scale * (ct * rx - st * ry)
+        ty = qmy + scale * (st * rx + ct * ry)
+        aligned.append([tx, ty])
+    return aligned
+
+
+def _layout_period_mds(
+    period_papers: List[Dict[str, Any]],
+    selected_concepts: List[Tuple[str, str, str, str]],
+    prev_positions: Dict[str, Tuple[float, float]],
+    prev_active_ids: Set[str],
+    all_seen_ids: Set[str],
+    prev_count_map: Dict[str, int],
+    total_count_map: Dict[str, int],
+    is_base_or_total: bool = False,
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], Dict[str, Tuple[float, float]]]:
+    """
+    해당 기간(분기 또는 전체 누적)의 동적 키워드 집합에 대해:
+    1) 동시출현(Ochiai) 유사도 행렬 -> Classical MDS
+    2) 이전 분기 위치(prev_positions)를 참조한 Procrustes 정렬 + 앵커링
+    3) 겹침 해소 후 노드·연관선·최종 좌표 반환
+    """
+    n_kw = len(selected_concepts)
+    if n_kw == 0:
+        return [], [], {}
+
+    compiled = [(kid, lbl, cat, pat, re.compile(pat, re.IGNORECASE)) for kid, lbl, cat, pat in selected_concepts]
+    n_docs = len(period_papers)
+    masks = [[0] * n_docs for _ in range(n_kw)]
+    counts = [0] * n_kw
+
+    for d_idx, p in enumerate(period_papers):
+        txt = f"{p.get('title_orig', '')} {p.get('title_ko', '')} {p.get('fact_summary_ko', '')}"
+        for k_idx, (_, _, _, _, rx) in enumerate(compiled):
+            if rx.search(txt):
+                masks[k_idx][d_idx] = 1
+                counts[k_idx] += 1
+
+    cooc = [[0] * n_kw for _ in range(n_kw)]
+    sim = [[0.0] * n_kw for _ in range(n_kw)]
+    for i in range(n_kw):
+        sim[i][i] = 1.0
+        cooc[i][i] = counts[i]
+        for j in range(i + 1, n_kw):
+            c_ij = sum(1 for d in range(n_docs) if masks[i][d] and masks[j][d])
+            cooc[i][j] = cooc[j][i] = c_ij
+            denom = math.sqrt(counts[i] * counts[j])
+            s_ij = (c_ij / denom) if denom > 0 else 0.0
+            sim[i][j] = sim[j][i] = s_ij
+
+    if n_kw >= 3:
+        D2 = [[max(0.0, 1.0 - sim[i][j]) for j in range(n_kw)] for i in range(n_kw)]
+        row_means = [sum(D2[i]) / n_kw for i in range(n_kw)]
+        grand_mean = sum(row_means) / n_kw
+        B = [
+            [-0.5 * (D2[i][j] - row_means[i] - row_means[j] + grand_mean) for j in range(n_kw)]
+            for i in range(n_kw)
+        ]
+        eigvals, eigvecs = _jacobi_top2_eigs(B)
+        raw_coords = [
+            [eigvecs[i][0] * math.sqrt(eigvals[0]), eigvecs[i][1] * math.sqrt(eigvals[1])]
+            for i in range(n_kw)
+        ]
+    else:
+        raw_coords = [[math.cos(i * 2.1), math.sin(i * 2.1)] for i in range(n_kw)]
+
+    W, H_px = 1000.0, 610.0
+    node_ids = [c[0] for c in selected_concepts]
+    aligned = _align_procrustes_2d(raw_coords, node_ids, prev_positions, W, H_px)
+
+    # Anchor continuing nodes tightly to previous quarter positions; let new nodes settle near aligned MDS / co-occurring partners
+    pos: List[List[float]] = []
+    anchor: List[List[float]] = []
+    is_anchored: List[bool] = []
+    for i, kid in enumerate(node_ids):
+        if kid in prev_positions:
+            px_prev, py_prev = prev_positions[kid]
+            # 85% previous position + 15% aligned new MDS so position remains recognizable across quarters
+            ix = 0.85 * px_prev + 0.15 * aligned[i][0]
+            iy = 0.85 * py_prev + 0.15 * aligned[i][1]
+            pos.append([ix, iy])
+            anchor.append([px_prev, py_prev])
+            is_anchored.append(True)
+        else:
+            # New node: blend Procrustes-aligned MDS with weighted centroid of anchored co-occurring neighbors
+            nb_w, nb_x, nb_y = 0.0, 0.0, 0.0
+            for j, other_id in enumerate(node_ids):
+                if i != j and other_id in prev_positions and sim[i][j] > 0.08:
+                    nb_w += sim[i][j]
+                    nb_x += sim[i][j] * prev_positions[other_id][0]
+                    nb_y += sim[i][j] * prev_positions[other_id][1]
+            if nb_w > 0.0:
+                nx = 0.55 * aligned[i][0] + 0.45 * (nb_x / nb_w)
+                ny = 0.55 * aligned[i][1] + 0.45 * (nb_y / nb_w)
+            else:
+                nx, ny = aligned[i][0], aligned[i][1]
+            pos.append([nx, ny])
+            anchor.append([nx, ny])
+            is_anchored.append(False)
+
+    max_cnt = max(counts) if counts and max(counts) > 0 else 1
+    radii = [17.0 + 27.0 * math.sqrt(c / max_cnt) for c in counts]
+    lbl_hw = [36.0 + 4.3 * len(lbl) for _, lbl, _, _ in selected_concepts]
+    lbl_hh = 12.0
+
+    # Deterministic overlap resolution (continuing nodes resist drifting far from their previous-quarter anchor)
+    for step in range(1400):
+        moved = False
+        for i in range(n_kw):
+            for j in range(i + 1, n_kw):
+                dx = pos[i][0] - pos[j][0]
+                dy = pos[i][1] - pos[j][1]
+                dist = math.hypot(dx, dy)
+                min_d = radii[i] + radii[j] + 24.0
+                if dist < min_d:
+                    ux, uy = (dx / dist, dy / dist) if dist > 1e-4 else (math.cos(i + j), math.sin(i + j))
+                    push = 0.5 * (min_d - dist) * 0.42
+                    wi = 0.35 if (is_anchored[i] and not is_anchored[j]) else (0.65 if (not is_anchored[i] and is_anchored[j]) else 0.5)
+                    wj = 1.0 - wi
+                    pos[i][0] += ux * push * 2.0 * wi; pos[i][1] += uy * push * 2.0 * wi
+                    pos[j][0] -= ux * push * 2.0 * wj; pos[j][1] -= uy * push * 2.0 * wj
+                    moved = True
+
+                lix, liy = pos[i][0], pos[i][1] + radii[i] + 15.0
+                ljx, ljy = pos[j][0], pos[j][1] + radii[j] + 15.0
+                ldx, ldy = abs(lix - ljx), abs(liy - ljy)
+                req_x = lbl_hw[i] + lbl_hw[j] + 10.0
+                req_y = lbl_hh * 2.0 + 7.0
+                if ldx < req_x and ldy < req_y:
+                    if (req_x - ldx) < (req_y - ldy):
+                        sx = 1.0 if lix >= ljx else -1.0
+                        pos[i][0] += sx * (req_x - ldx) * 0.32
+                        pos[j][0] -= sx * (req_x - ldx) * 0.32
+                    else:
+                        sy = 1.0 if liy >= ljy else -1.0
+                        pos[i][1] += sy * (req_y - ldy) * 0.32
+                        pos[j][1] -= sy * (req_y - ldy) * 0.32
+                    moved = True
+
+                for a, b in ((i, j), (j, i)):
+                    lx, ly = pos[a][0], pos[a][1] + radii[a] + 15.0
+                    cx, cy, cr = pos[b][0], pos[b][1], radii[b]
+                    clx = max(lx - lbl_hw[a], min(cx, lx + lbl_hw[a]))
+                    cly = max(ly - lbl_hh, min(cy, ly + lbl_hh))
+                    if math.hypot(cx - clx, cy - cly) < cr + 9.0:
+                        sy = 1.0 if pos[a][1] >= pos[b][1] else -1.0
+                        pos[a][1] += sy * 4.5
+                        pos[b][1] -= sy * 4.5
+                        moved = True
+
+        for i in range(n_kw):
+            pull = 0.035 if is_anchored[i] else 0.012
+            pos[i][0] = (1.0 - pull) * pos[i][0] + pull * anchor[i][0]
+            pos[i][1] = (1.0 - pull) * pos[i][1] + pull * anchor[i][1]
+            pad_x = max(radii[i], lbl_hw[i]) + 18.0
+            pos[i][0] = max(pad_x, min(W - pad_x, pos[i][0]))
+            pos[i][1] = max(radii[i] + 24.0, min(H_px - radii[i] - 32.0, pos[i][1]))
+        if not moved and step > 200:
+            break
+
+    # If first base quarter (no prev anchors), spread X cleanly across [115, 885]
+    if not prev_positions and n_kw >= 3:
+        xs = [p[0] for p in pos]
+        min_x, max_x = min(xs), max(xs)
+        if max_x - min_x > 10.0:
+            for i in range(n_kw):
+                pad_x = max(radii[i], lbl_hw[i]) + 18.0
+                sx = 120.0 + ((pos[i][0] - min_x) / (max_x - min_x)) * 760.0
+                pos[i][0] = max(pad_x, min(W - pad_x, sx))
+
+    nodes_out: List[Dict[str, Any]] = []
+    final_pos: Dict[str, Tuple[float, float]] = {}
+    for i, (kid, lbl, cat, pat) in enumerate(selected_concepts):
+        fx, fy = round(pos[i][0], 1), round(pos[i][1], 1)
+        final_pos[kid] = (fx, fy)
+        neighbors = []
+        for j in range(n_kw):
+            if i != j and cooc[i][j] > 0:
+                neighbors.append((sim[i][j], cooc[i][j], selected_concepts[j][1]))
+        neighbors.sort(reverse=True)
+
+        if is_base_or_total:
+            status = "base"
+        elif kid in prev_active_ids:
+            status = "continuing"
+        elif kid in all_seen_ids:
+            status = "reemerged"
+        else:
+            status = "new"
+
+        nodes_out.append({
+            "id": kid,
+            "label": lbl,
+            "category": cat,
+            "pattern": pat,
+            "x": fx,
+            "y": fy,
+            "count": counts[i],
+            "prevCount": prev_count_map.get(kid, 0) if (not is_base_or_total and prev_active_ids) else None,
+            "total": total_count_map.get(kid, counts[i]),
+            "status": status,
+            "topPartners": [{"label": nb[2], "shared": nb[1], "sim": round(nb[0], 2)} for nb in neighbors[:3]],
+        })
+
+    edges_out: List[Dict[str, Any]] = []
+    for i in range(n_kw):
+        for j in range(i + 1, n_kw):
+            if sim[i][j] >= 0.14 and cooc[i][j] >= 2:
+                edges_out.append({
+                    "source": selected_concepts[i][0],
+                    "target": selected_concepts[j][0],
+                    "sim": round(sim[i][j], 3),
+                    "shared": cooc[i][j],
+                })
+
+    return nodes_out, edges_out, final_pos
+
+
+def build_paper_trends_payload(items: List[Dict[str, Any]], cfg_map: Dict[str, str]) -> Dict[str, Any]:
+    """
+    [AI 비용 0원] v8.4.2 동적 분기별 MDS 키워드 클러스터 맵 + 최근 3개월 심층 거시 브리핑:
+    1) 고정 18종 제한 폐지 -> 매 3개월 분기마다 활성 논문에서 상위 핵심 키워드(최대 18종)를 동적 추출
+       (44개 임상미생물·감염병 개념 풀 + 미등록 신종 약제 자동 발굴).
+    2) 시간순(Q_1 -> Q_2 -> Q_3 -> Q_4)으로 이전 분기 좌표를 Procrustes 정렬로 참조하여,
+       유지되는 키워드는 기존 위치를 지키고, 새로 부상한 키워드(🆕)는 연관 군집 옆에 자동 배치되며,
+       사라진 키워드(📉)는 이탈 배지로 별도 추적함.
+    """
+    active_papers = [
+        x for x in items
+        if x.get("content_type") == "paper" and safe_str(x.get("source")).upper() != "NRM"
+    ]
+    by_quarter: Dict[str, List[Dict[str, Any]]] = {}
+    years_set: Set[str] = set()
+    for p in active_papers:
+        qk = _date_to_quarter_key(p.get("pub_date", ""))
+        if qk:
+            by_quarter.setdefault(qk, []).append(p)
+            years_set.add(qk[:4])
+
+    # 유의미한 분기(최소 5편 이상)를 시간순 정렬 (5편 미만 초기 분기는 스킵하거나 유지)
+    all_quarters = sorted(by_quarter.keys())
+    meaningful_quarters = [q for q in all_quarters if len(by_quarter[q]) >= 5]
+    if not meaningful_quarters:
+        meaningful_quarters = all_quarters
+    years = sorted(years_set, reverse=True)
+
+    pool_compiled = [(kid, lbl, cat, pat, re.compile(pat, re.IGNORECASE)) for kid, lbl, cat, pat in DYNAMIC_CONCEPT_POOL_V842]
+    pool_regexes = [rx for _, _, _, _, rx in pool_compiled]
+
+    # 전체 누적 카운트 계산 (참고용)
+    all_texts = [f"{p.get('title_orig', '')} {p.get('title_ko', '')} {p.get('fact_summary_ko', '')}" for p in active_papers]
+    total_count_map: Dict[str, int] = {}
+    for kid, _, _, _, rx in pool_compiled:
+        total_count_map[kid] = sum(1 for t in all_texts if rx.search(t))
+
+    periods_payload: Dict[str, Dict[str, Any]] = {}
+    prev_positions: Dict[str, Tuple[float, float]] = {}
+    prev_active_ids: Set[str] = set()
+    prev_active_meta: Dict[str, Tuple[str, str, str, int, float, float]] = {}
+    prev_count_map_all: Dict[str, int] = {}
+    all_seen_ids: Set[str] = set()
+    prev_q_key = ""
+
+    for q_idx, qk in enumerate(meaningful_quarters):
+        q_papers = by_quarter[qk]
+        q_texts = [f"{p.get('title_orig', '')} {p.get('title_ko', '')} {p.get('fact_summary_ko', '')}" for p in q_papers]
+        min_df = 2 if len(q_papers) < 100 else 3
+
+        # Layer 1: 개념 풀 집계
+        q_counts_map: Dict[str, int] = {}
+        scored_cands: List[Tuple[int, str, str, str, str]] = []
+        for kid, lbl, cat, pat, rx in pool_compiled:
+            c = sum(1 for t in q_texts if rx.search(t))
+            q_counts_map[kid] = c
+            if c >= min_df:
+                scored_cands.append((c, kid, lbl, cat, pat))
+
+        # Layer 2: 미등록 신종 약제 자동 발굴 (분기 내 4편 이상 등장)
+        novel_cands = _mine_novel_clinical_terms(q_texts, pool_regexes, min_df=max(4, min_df + 1), max_novel=2)
+        for kid, lbl, cat, pat in novel_cands:
+            rx_n = re.compile(pat, re.IGNORECASE)
+            c = sum(1 for t in q_texts if rx_n.search(t))
+            q_counts_map[kid] = c
+            total_count_map[kid] = sum(1 for t in all_texts if rx_n.search(t))
+            scored_cands.append((c, kid, lbl, cat, pat))
+
+        scored_cands.sort(key=lambda x: (x[0], 1 if x[1] in prev_active_ids else 0), reverse=True)
+        top_selected = [(kid, lbl, cat, pat) for _, kid, lbl, cat, pat in scored_cands[:18]]
+
+        nodes_q, edges_q, final_pos_q = _layout_period_mds(
+            period_papers=q_papers,
+            selected_concepts=top_selected,
+            prev_positions=prev_positions,
+            prev_active_ids=prev_active_ids,
+            all_seen_ids=all_seen_ids,
+            prev_count_map=prev_count_map_all,
+            total_count_map=total_count_map,
+            is_base_or_total=(q_idx == 0),
+        )
+
+        # 직전 분기에는 있었으나 이번 분기 TOP 18에서 이탈(소멸/감소)한 키워드 집계
+        cur_ids = {nd["id"] for nd in nodes_q}
+        faded_list = []
+        if prev_q_key:
+            for pid, (plbl, pcat, ppat, pcnt, px, py) in prev_active_meta.items():
+                if pid not in cur_ids:
+                    faded_list.append({
+                        "id": pid,
+                        "label": plbl,
+                        "category": pcat,
+                        "pattern": ppat,
+                        "prevCount": pcnt,
+                        "count": q_counts_map.get(pid, 0),
+                        "x": px,
+                        "y": py,
+                    })
+            faded_list.sort(key=lambda x: x["prevCount"], reverse=True)
+
+        max_c = 1
+        for nd in nodes_q:
+            max_c = max(max_c, nd["count"], nd["prevCount"] or 0)
+
+        yr_s, q_num = qk.split("-Q")
+        q_month_span = {"1": "1~3월", "2": "4~6월", "3": "7~9월", "4": "10~12월"}.get(q_num, "")
+        periods_payload[qk] = {
+            "key": qk,
+            "label": f"{yr_s}년 {q_num}분기 ({q_month_span})",
+            "prevKey": prev_q_key,
+            "paperCount": len(q_papers),
+            "maxCount": max_c,
+            "nodes": nodes_q,
+            "edges": edges_q,
+            "faded": faded_list,
+        }
+
+        # Update rolling anchor memory for next quarter
+        for kid, xy in final_pos_q.items():
+            prev_positions[kid] = xy
+        all_seen_ids.update(cur_ids)
+        prev_active_ids = cur_ids
+        prev_active_meta = {
+            nd["id"]: (nd["label"], nd["category"], nd["pattern"], nd["count"], nd["x"], nd["y"])
+            for nd in nodes_q
+        }
+        prev_count_map_all = q_counts_map
+        prev_q_key = qk
+
+    # 전체 누적("total") 뷰: 가장 최근 분기까지의 앵커 좌표(prev_positions)를 참조하여 배치
+    tot_cands = []
+    for kid, lbl, cat, pat, _ in pool_compiled:
+        c = total_count_map.get(kid, 0)
+        if c >= 3:
+            tot_cands.append((c, kid, lbl, cat, pat))
+    tot_cands.sort(key=lambda x: (x[0], 1 if x[1] in prev_active_ids else 0), reverse=True)
+    top_total = [(kid, lbl, cat, pat) for _, kid, lbl, cat, pat in tot_cands[:18]]
+
+    nodes_tot, edges_tot, _ = _layout_period_mds(
+        period_papers=active_papers,
+        selected_concepts=top_total,
+        prev_positions=prev_positions,
+        prev_active_ids=set(),
+        all_seen_ids=all_seen_ids,
+        prev_count_map={},
+        total_count_map=total_count_map,
+        is_base_or_total=True,
+    )
+    periods_payload["total"] = {
+        "key": "total",
+        "label": "전체 누적 (상위 18개 핵심 키워드)",
+        "prevKey": "",
+        "paperCount": len(active_papers),
+        "maxCount": max([1] + [nd["count"] for nd in nodes_tot]),
+        "nodes": nodes_tot,
+        "edges": edges_tot,
+        "faded": [],
+    }
+
+    # Load cached AI macro briefing from config if valid, else 0-won fallback
+    macro_briefing = None
+    raw_cached = safe_str(cfg_map.get(TREND_CONFIG_KEY))
+    if raw_cached:
+        try:
+            parsed_cache = json.loads(raw_cached)
+            if isinstance(parsed_cache, dict) and parsed_cache.get("headline"):
+                macro_briefing = parsed_cache
+        except Exception:
+            pass
+    if macro_briefing is None:
+        macro_briefing = build_fallback_macro_trend(active_papers)
+
+    default_period = meaningful_quarters[-1] if meaningful_quarters else "total"
+    return {
+        "mode": "dynamic_quarterly_mds_v842",
+        "years": years,
+        "quarters": meaningful_quarters,
+        "defaultPeriod": default_period,
+        "viewport": {"width": 1000, "height": 610},
+        "periods": periods_payload,
+        "macroBriefing": macro_briefing,
+    }
+
+
 def write_dashboard_json(
     item_rows: List[Dict[str, Any]],
     surv_rows: List[Dict[str, Any]],
@@ -2694,6 +3520,7 @@ def write_dashboard_json(
         "notifiableDiseases": [],
         "kdcaGuidelineReleases": [],
         "referenceStandards": {},
+        "paperTrends": build_paper_trends_payload(items, cfg_map),
     }
     if precomputed_live is not None:
         rs_live, noti_live, kdca_rel_live, live_std_msg = precomputed_live
@@ -3505,6 +4332,25 @@ def mode_collect(allow_h1: bool = False) -> None:
     status = "Success" if (not fetch_errors and not ai_errors) else ("Partial" if new_count > 0 else "Fail")
     append_run_log(ss, run_id, now_str, "ALL", status, total_fetched, new_count, total_dup, " / ".join(notes))
 
+    # 신규 논문이 추가되었거나 트렌드 캐시가 비어 있을 때만 최근 3개월 AI 거시 브리핑 1회 갱신 (~₩36)
+    if new_count > 0 or not safe_str(cfg.get(TREND_CONFIG_KEY)):
+        try:
+            all_items_now = read_sheet_as_dicts(ss, SHEET_ITEMS)
+            active_papers_now = [
+                x for x in all_items_now
+                if safe_str(x.get("content_type")) == "paper" and safe_str(x.get("source")).upper() != "NRM"
+            ]
+            trend_obj = generate_macro_trend_briefing_ai(active_papers_now, deep_model, fallback_model, gemini_key)
+            upsert_config_value(
+                ss,
+                TREND_CONFIG_KEY,
+                json.dumps(trend_obj, ensure_ascii=False, separators=(",", ":")),
+                "v8.4.0 최근 3개월 롤링 AI 논문 거시 브리핑 캐시",
+            )
+            print(f"[OK] 최근 3개월 AI 거시 브리핑 갱신 완료 ({trend_obj.get('period_label')}, {trend_obj.get('model')})")
+        except Exception as tr_err:
+            print(f"[경고] AI 거시 브리핑 갱신 건너뜀(기존 캐시 유지): {tr_err}")
+
     sync_sheet_to_dashboard_json(ss)
 
 
@@ -3778,11 +4624,45 @@ def mode_sync_kdca_and_dashboard() -> None:
     sync_sheet_to_dashboard_json(ss)
 
 
+def mode_update_trend_only() -> None:
+    """최근 3개월 롤링 필독·주목 논문 기반 AI 거시 브리핑 단독 갱신 (~₩36/회) + dashboard.json 재생성"""
+    ss = connect_spreadsheet()
+    cfg = load_config_map(ss)
+    gemini_key = os.environ.get("GEMINI_API_KEY", "").strip()
+    if not gemini_key:
+        raise RuntimeError("GEMINI_API_KEY 가 설정되지 않았습니다.")
+    _, deep_model, fallback_model, _, _ = get_gemini_models(cfg)
+    all_items = read_sheet_as_dicts(ss, SHEET_ITEMS)
+    active_papers = [
+        x for x in all_items
+        if safe_str(x.get("content_type")) == "paper" and safe_str(x.get("source")).upper() != "NRM"
+    ]
+    trend_obj = generate_macro_trend_briefing_ai(active_papers, deep_model, fallback_model, gemini_key)
+    upsert_config_value(
+        ss,
+        TREND_CONFIG_KEY,
+        json.dumps(trend_obj, ensure_ascii=False, separators=(",", ":")),
+        "v8.4.0 최근 3개월 롤링 AI 논문 거시 브리핑 캐시",
+    )
+    append_run_log(
+        ss,
+        "GH_TREND_" + now_kst().strftime("%Y%m%d_%H%M%S"),
+        now_kst_str(),
+        "TREND_AI",
+        "Success",
+        trend_obj.get("paper_count", 0),
+        1,
+        0,
+        f"{CODE_VERSION} 최근 3개월 AI 거시 브리핑 갱신 ({trend_obj.get('period_label')})",
+    )
+    sync_sheet_to_dashboard_json(ss)
+
+
 def main():
     parser = argparse.ArgumentParser(description="임상미생물 주간 브리핑 파이프라인 v8.3.0")
     parser.add_argument(
         "--mode",
-        choices=["sync_kdca_and_dashboard", "sync_sheet_only", "collect", "resummarize_all", "reclassify_only", "pilot_20", "test_apis", "build_from_csv"],
+        choices=["sync_kdca_and_dashboard", "sync_sheet_only", "collect", "resummarize_all", "reclassify_only", "pilot_20", "test_apis", "update_trend_only", "build_from_csv"],
         default="collect",
     )
     parser.add_argument("--allow-h1", action="store_true", help="2026년 상반기(1~6월) 소급 가드 해제")
@@ -3802,6 +4682,8 @@ def main():
         mode_sync_kdca_and_dashboard()
     elif args.mode == "sync_sheet_only":
         mode_sync_sheet_only()
+    elif args.mode == "update_trend_only":
+        mode_update_trend_only()
     elif args.mode == "resummarize_all":
         mode_resummarize_all(force=args.force, allow_h1=args.allow_h1)
     else:
