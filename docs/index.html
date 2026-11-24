@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="robots" content="noindex, nofollow" />
-  <title>임상미생물 주간 브리핑 v8.3.4</title>
+  <title>임상미생물 주간 브리핑 v8.3.5</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
   <style>
     :root {
@@ -399,6 +399,35 @@
       color: var(--primary);
       box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
     }
+
+    /* Guideline Series Group Card (v8.3.5) */
+    .guide-group {
+      border: 1.5px solid #cbd5e1;
+      border-left: 5px solid #059669;
+      border-radius: 11px;
+      background: #ffffff;
+      overflow: hidden;
+    }
+    .guide-group-head {
+      padding: 13px 15px;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 10px;
+      background: #f8fffc;
+    }
+    .guide-group-head:hover { background: #ecfdf5; }
+    .guide-group-body {
+      display: none;
+      padding: 10px 12px 12px;
+      border-top: 1px solid #d1fae5;
+      background: #f8fafc;
+    }
+    .guide-group.open .guide-group-body { display: flex; flex-direction: column; gap: 8px; }
+    .guide-group.open .g-chev { transform: rotate(180deg); }
+    .g-chev { font-size: 0.78rem; color: var(--text-light); transition: transform 0.2s; }
+    #paperSource { max-width: 240px; }
 
     /* Accordion Item Card */
     .item-list { display: flex; flex-direction: column; gap: 10px; }
@@ -797,7 +826,7 @@
     <div class="topbar-inner">
       <div class="brand-row">
         <div>
-          <div class="brand-title">임상미생물 주간 브리핑 <span class="ver-pill">v8.3.4</span></div>
+          <div class="brand-title">임상미생물 주간 브리핑 <span class="ver-pill">v8.3.5</span></div>
           <div class="brand-sub" id="brandSub">GitHub Pages 메인 대시보드 · 데이터 불러오는 중...</div>
         </div>
         <div class="meta-actions">
@@ -1075,6 +1104,7 @@
           <span class="section-sub" id="paperFilterMeta"></span>
         </div>
         <div class="toolbar">
+          <select class="select" id="paperYear"></select>
           <select class="select" id="paperMonth"></select>
           <select class="select" id="paperSource"></select>
           <select class="select" id="paperCat"></select>
@@ -1131,7 +1161,7 @@
     <div class="footer-note">
       본 대시보드는 공개 학술 초록(PubMed·Crossref) 및 공식 감염병 통계(KDCA·WHO) 기반 참고 요약입니다.
       AI 해석은 원문 사실과 분리 표기되며, 최종 임상·검사실 의사결정 시 반드시 원문을 확인하세요.
-      (북마크는 현재 기기 브라우저에 개인별 저장 · GitHub Pages 메인 단일화 v8.3.4)
+      (북마크는 현재 기기 브라우저에 개인별 저장 · GitHub Pages 메인 단일화 v8.3.5)
     </div>
   </main>
 
@@ -1163,6 +1193,39 @@
   <script>
     const BM_STORAGE_KEY = 'cmb_personal_bookmarks_v8';
     const TIER_RANK = { 'Must-Read': 4, 'High': 3, 'Medium': 2, 'Low': 1 };
+    const JOURNAL_FULL_NAMES = {
+      'JCM': 'Journal of Clinical Microbiology',
+      'CMI': 'Clinical Microbiology and Infection',
+      'CMR': 'Clinical Microbiology Reviews',
+      'ALM': 'Annals of Laboratory Medicine',
+      'ACM': 'Annals of Clinical Microbiology',
+      'CID': 'Clinical Infectious Diseases',
+      'LANCET_ID': 'The Lancet Infectious Diseases',
+      'NEJM': 'New England Journal of Medicine',
+      'LANCET': 'The Lancet',
+      'JAMA': 'Journal of the American Medical Association'
+    };
+    const JOURNAL_GROUPS = [
+      ['JCM', 'CMI', 'CMR', 'ALM', 'ACM'],
+      ['CID', 'LANCET_ID'],
+      ['NEJM', 'LANCET', 'JAMA']
+    ];
+
+    function detectGuidelineSeries(item) {
+      if (!item || item.source !== 'IDSA') return null;
+      const t = String(item.title_orig || '');
+      if (/Community-Acquired Pneumonia in Infants and Children/i.test(t) || (/Pediatric Infectious Diseases Society/i.test(t) && /Pneumonia/i.test(t))) {
+        return { key: 'IDSA_PED_CAP_2026', title: '2026 IDSA·PIDS 소아 지역사회획득 폐렴(CAP) 임상진료지침 시리즈', badge: 'IDSA · PIDS' };
+      }
+      if (/Vaccines for the Prevention of Seasonal/i.test(t) && /Immunocompromised/i.test(t)) {
+        return { key: 'IDSA_IMMUNO_VAX_2025', title: '2025 IDSA 면역저하 환자 계절성 백신(COVID-19·인플루엔자·RSV) 가이드라인 시리즈', badge: 'IDSA 백신' };
+      }
+      if (/Treatment and Management of Patients with COVID-19/i.test(t) || /COVID-19 치료 및 관리/.test(String(item.title_ko || ''))) {
+        return { key: 'IDSA_COVID19_2025', title: '2025 IDSA COVID-19 치료 및 관리 임상진료지침 개정 시리즈', badge: 'IDSA COVID-19' };
+      }
+      return null;
+    }
+
     const CE_LABELS = {
       'E1': 'E1 · 공식 기준·지침 변경',
       'E2': 'E2 · 중대한 검사 오류·한계',
@@ -2105,14 +2168,60 @@
         }
         return true;
       });
-      document.getElementById('guideFilterMeta').textContent = '검색 결과 ' + list.length + '건';
-      document.getElementById('guideList').innerHTML = list.length
-        ? list.map(x => renderAccordionCard(x)).join('')
+      const blocks = [];
+      const groupMap = {};
+      list.forEach(item => {
+        const ser = detectGuidelineSeries(item);
+        if (ser && !q) {
+          if (!groupMap[ser.key]) {
+            groupMap[ser.key] = { meta: ser, items: [] };
+            blocks.push({ type: 'group', key: ser.key });
+          }
+          groupMap[ser.key].items.push(item);
+        } else {
+          blocks.push({ type: 'single', item: item });
+        }
+      });
+
+      const rendered = blocks.map(b => {
+        if (b.type === 'single') return renderAccordionCard(b.item);
+        const g = groupMap[b.key];
+        if (g.items.length === 1) return renderAccordionCard(g.items[0]);
+        const dates = g.items.map(x => x.pub_date).filter(Boolean).sort();
+        const latestDate = dates[dates.length - 1] || '';
+        const maxScore = Math.max.apply(null, g.items.map(x => x.importance_score || 0));
+        const mustCnt = g.items.filter(x => x.importance === 'Must-Read').length;
+        return (
+          '<section class="guide-group">' +
+            '<div class="guide-group-head" onclick="this.parentElement.classList.toggle(\'open\')">' +
+              '<div class="acc-main">' +
+                '<div class="acc-badges">' +
+                  '<span class="badge b-oa">시리즈 묶음 · ' + g.items.length + '편</span>' +
+                  '<span class="badge b-source">' + esc(g.meta.badge) + '</span>' +
+                  (mustCnt > 0 ? '<span class="badge b-must">필독 ' + mustCnt + '편 · 최고 ' + maxScore + '점</span>' : '') +
+                  '<span class="acc-date">' + esc(latestDate) + '</span>' +
+                '</div>' +
+                '<h3 class="acc-title">' + esc(g.meta.title) + '</h3>' +
+                '<div class="acc-preview">클릭하여 분할 출간된 세부 지침 ' + g.items.length + '편을 펼쳐보세요.</div>' +
+              '</div>' +
+              '<div class="acc-right"><span class="g-chev">▼</span></div>' +
+            '</div>' +
+            '<div class="guide-group-body">' +
+              g.items.map(x => renderAccordionCard(x)).join('') +
+            '</div>' +
+          '</section>'
+        );
+      });
+
+      document.getElementById('guideFilterMeta').textContent = '총 ' + list.length + '건 (' + blocks.length + '개 주제)';
+      document.getElementById('guideList').innerHTML = rendered.length
+        ? rendered.join('')
         : '<div class="empty-state">조건에 맞는 가이드라인이 없습니다.</div>';
     }
 
     /* ==================== 탭 4: 논문 (현행 유지) ==================== */
     function renderPapers() {
+      const yr = document.getElementById('paperYear').value;
       const mo = document.getElementById('paperMonth').value;
       const src = document.getElementById('paperSource').value;
       const cat = document.getElementById('paperCat').value;
@@ -2122,7 +2231,9 @@
 
       const list = (state.data.items || []).filter(x => {
         if (x.content_type !== 'paper') return false;
-        if (mo && !String(x.pub_date || '').startsWith(mo)) return false;
+        const pd = String(x.pub_date || '');
+        if (yr && !pd.startsWith(yr + '-')) return false;
+        if (mo && pd.slice(5, 7) !== mo) return false;
         if (src && x.source !== src) return false;
         if (cat && x.topic_category !== cat) return false;
         if (imp && x.importance !== imp) return false;
@@ -2195,9 +2306,50 @@
       fillSelect('guideSource', '출처 전체', Array.from(new Set(guidelines.map(x => x.source))).sort());
       fillSelect('guideCat', '분야 전체', Array.from(new Set(guidelines.map(x => x.topic_category))).sort());
 
-      const months = Array.from(new Set(papers.map(x => (x.pub_date || '').slice(0, 7)).filter(Boolean))).sort().reverse();
-      fillSelect('paperMonth', '전체 월', months);
-      fillSelect('paperSource', '저널 전체', Array.from(new Set(papers.map(x => x.source))).sort());
+      const years = Array.from(new Set(papers.map(x => (x.pub_date || '').slice(0, 4)).filter(Boolean))).sort().reverse();
+      const yrEl = document.getElementById('paperYear');
+      yrEl.innerHTML = ['<option value="">전체 연도</option>'].concat(
+        years.map(y => '<option value="' + esc(y) + '">' + esc(y) + '년</option>')
+      ).join('');
+      if (years.length === 1) yrEl.value = years[0];
+
+      const moEl = document.getElementById('paperMonth');
+      const moOpts = ['<option value="">전체 월</option>'];
+      for (let m = 12; m >= 1; m--) {
+        const mm = String(m).padStart(2, '0');
+        moOpts.push('<option value="' + mm + '">' + m + '월</option>');
+      }
+      moEl.innerHTML = moOpts.join('');
+
+      const presentSources = new Set(papers.map(x => x.source).filter(Boolean));
+      const srcEl = document.getElementById('paperSource');
+      const srcOpts = ['<option value="">저널 전체</option>'];
+      let placedGroups = 0;
+      const placedSet = new Set();
+      JOURNAL_GROUPS.forEach(grp => {
+        const avail = grp.filter(code => presentSources.has(code));
+        if (!avail.length) return;
+        if (placedGroups > 0) {
+          srcOpts.push('<option disabled>────────────────────────</option>');
+        }
+        avail.forEach(code => {
+          placedSet.add(code);
+          const full = JOURNAL_FULL_NAMES[code];
+          const label = full ? (code + ' (' + full + ')') : code;
+          srcOpts.push('<option value="' + esc(code) + '">' + esc(label) + '</option>');
+        });
+        placedGroups += 1;
+      });
+      const extras = Array.from(presentSources).filter(c => !placedSet.has(c)).sort();
+      if (extras.length) {
+        if (placedGroups > 0) srcOpts.push('<option disabled>────────────────────────</option>');
+        extras.forEach(code => {
+          const full = JOURNAL_FULL_NAMES[code];
+          const label = full ? (code + ' (' + full + ')') : code;
+          srcOpts.push('<option value="' + esc(code) + '">' + esc(label) + '</option>');
+        });
+      }
+      srcEl.innerHTML = srcOpts.join('');
       fillSelect('paperCat', '분야 전체', Array.from(new Set(papers.map(x => x.topic_category))).sort());
 
       document.getElementById('logModelInfo').textContent =
@@ -2331,7 +2483,7 @@
         renderGuidelines();
       });
 
-      ['paperMonth', 'paperSource', 'paperCat', 'paperImp', 'paperSort', 'paperSearch'].forEach(id => {
+      ['paperYear', 'paperMonth', 'paperSource', 'paperCat', 'paperImp', 'paperSort', 'paperSearch'].forEach(id => {
         document.getElementById(id).addEventListener('input', () => { state.paperLimit = 30; renderPapers(); });
         document.getElementById(id).addEventListener('change', () => { state.paperLimit = 30; renderPapers(); });
       });
