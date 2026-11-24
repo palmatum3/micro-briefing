@@ -32,7 +32,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 import requests
 
-CODE_VERSION = "v8.4.2"
+CODE_VERSION = "v8.4.3"
 KST = datetime.timezone(datetime.timedelta(hours=9))
 
 SHEET_ITEMS = "items"
@@ -42,7 +42,7 @@ SHEET_KDCA_SURV = "kdca_surveillance"
 SHEET_HAI_STATS = "hai_stats"
 SHEET_PILOT = "pilot_v82"
 SHEET_DRYRUN = "dryrun_v83"
-TREND_CONFIG_KEY = "paper_macro_trend_v841"
+TREND_CONFIG_KEY = "paper_macro_trend_v843"
 
 # v8.4.2 동적 분기별 MDS 키워드 추출 풀 (임상미생물·감염병 핵심 44개 개념 + 미등록 신종 용어 자동 발굴)
 DYNAMIC_CONCEPT_POOL_V842: List[Tuple[str, str, str, str]] = [
@@ -299,7 +299,7 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 OUTPUT_JSON_PATH = ROOT_DIR / "docs" / "data" / "dashboard.json"
 
 HTTP = requests.Session()
-HTTP.headers.update({"User-Agent": "ClinicalMicroBriefing/8.4.2 (Academic Surveillance Bot)"})
+HTTP.headers.update({"User-Agent": "ClinicalMicroBriefing/8.4.3 (Academic Surveillance Bot)"})
 
 
 def now_kst() -> datetime.datetime:
@@ -2715,6 +2715,7 @@ def _jacobi_top2_eigs(B: List[List[float]]) -> Tuple[List[float], List[List[floa
 
 
 def _date_to_quarter_key(pub_date: str) -> str:
+    """고정 캘린더 분기 키 반환 (1~3월=Q1, 4~6월=Q2, 7~9월=Q3, 10~12월=Q4)"""
     s = safe_str(pub_date)[:7]
     if len(s) < 7 or not s[:4].isdigit() or not s[5:7].isdigit():
         return ""
@@ -2724,143 +2725,173 @@ def _date_to_quarter_key(pub_date: str) -> str:
     return f"{yr}-Q{q}"
 
 
-def build_fallback_macro_trend(active_papers: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """[AI 비용 0원] 최근 3개월 롤링 필독·주목 논문 기반 고밀도 구조화 거시 요약 폴백"""
-    valid_months = sorted({safe_str(p.get("pub_date"))[:7] for p in active_papers if len(safe_str(p.get("pub_date"))) >= 7})
-    recent_months = valid_months[-3:] if valid_months else []
-    period_label = f"{recent_months[0]} ~ {recent_months[-1]} (최근 {len(recent_months)}개월)" if recent_months else "최근 3개월"
+def _quarter_meta(qk: str) -> Tuple[str, str, Optional[datetime.date], str]:
+    """분기 키 -> (한글 라벨, 월 범위, 종료일 date, 공개 예정일 문자열)"""
+    m = re.match(r"^(\d{4})-Q([1-4])$", safe_str(qk))
+    if not m:
+        return qk, "", None, ""
+    yr = int(m.group(1))
+    q = int(m.group(2))
+    span_map = {1: ("1~3월", 3, 31), 2: ("4~6월", 6, 30), 3: ("7~9월", 9, 30), 4: ("10~12월", 12, 31)}
+    span_lbl, end_m, end_d = span_map[q]
+    end_date = datetime.date(yr, end_m, end_d)
+    avail_date = (end_date + datetime.timedelta(days=1)).strftime("%Y-%m-%d")
+    return f"{yr}년 {q}분기 ({span_lbl})", span_lbl, end_date, avail_date
+
+
+def _is_quarter_completed(qk: str, ref_date: Optional[datetime.date] = None) -> bool:
+    """해당 분기가 완전히 종료되었는지 판정 (종료일 다음 날부터 True: 예 11월 기준 Q3=True, Q4=False)"""
+    _, _, end_date, _ = _quarter_meta(qk)
+    if not end_date:
+        return False
+    today = ref_date or now_kst().date()
+    return today > end_date
+
+
+def _load_quarterly_trend_cache(cfg_map: Dict[str, str]) -> Dict[str, Dict[str, Any]]:
+    """config의 paper_macro_trend_v843에서 완료 분기별 AI 브리핑 캐시 딕셔너리 로드"""
+    raw = safe_str(cfg_map.get(TREND_CONFIG_KEY))
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+        if isinstance(parsed, dict):
+            return {k: v for k, v in parsed.items() if isinstance(v, dict) and v.get("headline")}
+    except Exception:
+        pass
+    return {}
+
+
+def build_fallback_macro_trend_for_quarter(
+    quarter_papers: List[Dict[str, Any]],
+    quarter_key: str,
+) -> Dict[str, Any]:
+    """[AI 비용 0원] 완료된 특정 분기의 필독·주목 논문 기반 간결·사실 중심 구조화 브리핑"""
+    if quarter_key == "total":
+        period_label = "완료 분기 전체 누적"
+    else:
+        period_label, _, _, _ = _quarter_meta(quarter_key)
+
     pool = [
-        p for p in active_papers
-        if safe_str(p.get("pub_date"))[:7] in recent_months
-        and safe_str(p.get("importance")) in ("Must-Read", "High")
+        p for p in quarter_papers
+        if safe_str(p.get("importance")) in ("Must-Read", "High")
     ]
     pool.sort(key=lambda x: (1 if x.get("critical_exception") else 0, x.get("importance_score") or 0), reverse=True)
-
     ce_papers = [p for p in pool if p.get("critical_exception")]
     must_papers = [p for p in pool if p.get("importance") == "Must-Read"]
 
-    def build_pillar(
-        title: str,
-        cats: Tuple[str, ...],
-        default_summary: str,
-        default_checkpoint: str,
-    ) -> Dict[str, Any]:
+    def _clean_sentence(txt: str, limit: int = 135) -> str:
+        s = re.sub(r"\s+", " ", safe_str(txt))
+        s = re.sub(r"^[•\-\s]*\[[^\]]+\]\s*", "", s)
+        s = re.sub(r"^\[AI[^\]]*\]\s*", "", s)
+        return s[:limit].rstrip() + ("..." if len(s) > limit else "")
+
+    def build_pillar(title: str, cats: Tuple[str, ...]) -> Dict[str, Any]:
         sub = [p for p in pool if safe_str(p.get("topic_category")) in cats]
+        if not sub:
+            return {
+                "title": title,
+                "trend_summary": f"{period_label}에는 해당 영역의 필독·주목 선별 논문이 없습니다.",
+                "key_evidence": [],
+                "lab_checkpoint": "해당 분기 특이 점검 사항 없음.",
+            }
+        top_titles = [safe_str(p.get("title_ko")) for p in sub[:2] if safe_str(p.get("title_ko"))]
+        summary_txt = f"{period_label} 해당 영역 핵심 논문 {len(sub)}편 중 주요 주제는 '{' / '.join(top_titles)}'입니다."
         ev_list = []
         for p in sub[:3]:
             src = safe_str(p.get("source"))
             pd = safe_str(p.get("pub_date"))[5:]
             sc = p.get("importance_score") or 0
-            ce_tag = f" · 예외필독 {p['critical_exception']}" if p.get("critical_exception") else ""
-            fact_first = re.sub(r"\s+", " ", safe_str(p.get("fact_summary_ko")))
-            fact_first = re.sub(r"^[•\-\s]*\[[^\]]+\]\s*", "", fact_first)[:135]
-            ev_list.append(f"[{src} {pd} · {sc}점{ce_tag}] {safe_str(p.get('title_ko'))}: {fact_first}...")
-        if not ev_list:
-            ev_list = ["해당 기간 선별된 핵심 논문 데이터가 누적 중입니다."]
-        first_note = re.sub(r"^\[[^\]]+\]\s*", "", safe_str(sub[0].get("ai_clinical_note")))[:180] if sub else ""
+            ce_tag = f" · 예외 {p['critical_exception']}" if p.get("critical_exception") else ""
+            ev_list.append(f"[{src} {pd} · {sc}점{ce_tag}] {safe_str(p.get('title_ko'))} — {_clean_sentence(p.get('fact_summary_ko'), 120)}")
+        cp = _clean_sentence(sub[0].get("ai_clinical_note"), 170) or "원문 기준을 확인해 원내 검사 프로토콜과 대조하십시오."
         return {
             "title": title,
-            "trend_summary": default_summary,
+            "trend_summary": summary_txt,
             "key_evidence": ev_list,
-            "lab_checkpoint": first_note or default_checkpoint,
+            "lab_checkpoint": cp,
         }
 
     pillars = {
-        "diagnostics": build_pillar(
-            "분자진단 · 검사실 워크플로우",
-            ("분자진단·신기술",),
-            "상용 다중 PCR 패널의 위양성 검증(용해 곡선 분석 후 알고리듬)과 인플루엔자 변이(subclade K) 대응 프라이머 업데이트 등 기존 분자진단 사각지대 보완이 핵심 화두입니다. 동시에 양성 혈액배양 직접 동정·AST 및 ddPCR·cfDNA 비침습 진단이 검사소요시간(TAT) 단축을 주도하고 있습니다.",
-            "상용 다중 PCR 패널의 위양성 주의 타겟(Campylobacter·Norovirus 등) 판독 기준을 점검하고, 아형 미결정 인플루엔자 A형 검체의 프라이머 변이 불일치 가능성을 모니터링하십시오.",
-        ),
-        "amr_ast": build_pillar(
-            "항균제 내성 · 감수성 시험(AST)",
-            ("항균제 내성·AST",),
-            "카바페네마제 음성이라도 포린 변이·효소 과발현을 동반한 에르타페넴 내성(ETP-R) 장내세균의 치료 실패 위험이 부각되었으며, MBL 생성 CRE 대응을 위한 aztreonam-avibactam 상용 확산법 및 신속 AST 검증이 활발히 보고되고 있습니다.",
-            "침습 검체에서 ETP-R이면서 이미페넴·메로페넴 감수성인 균주는 정확한 MIC 수치와 주의 주석을 병기하고, MBL 생성 CRE 대비 AZA 감수성 시험 프로토콜을 정비하십시오.",
-        ),
-        "therapy_asp": build_pillar(
-            "임상 감염 치료 · 스튜어드십(ASP)",
-            ("임상 감염·치료",),
-            "다기관 3상 무작위 대조시험을 통해 중증 원내폐렴(HABP/VABP) 신약 베타락타마제 억제제 복합제의 비열등성이 입증되고, 단순 균혈증의 단기 항균제 요법 및 MSSA 균혈증의 48시간 음성 후 불필요한 추적 혈액배양 축소 근거가 강화되고 있습니다.",
-            "혈액배양 신속 동정·감수성 보고와 원내 항균제 스튜어드십(ASP) 팀 연계를 강화하여, 단순 균혈증의 조기 표적 치료 전환과 불필요한 반복 혈액배양 의뢰를 줄이십시오.",
-        ),
-        "epidemiology_ic": build_pillar(
-            "신종·유행 병원체 · 감염관리 역학",
-            ("감염관리·역학",),
-            "인플루엔자 A(H3N2) subclade K 유행 모니터링, C. auris 글로벌 clade 다변화 및 내성 양상, 그리고 cgMLST·IR Biotyper를 활용한 원내 집단발생 신속 추적 체계 구축이 주요 흐름을 형성하고 있습니다.",
-            "원내 C. auris 및 다제내성균 집단발생 감시를 위해 MALDI-TOF·분자형별 분석 연계를 유지하고, 계절성 호흡기 바이러스 유행기 다중 PCR 시약 및 격리 대응 체계를 점검하십시오.",
-        ),
+        "diagnostics": build_pillar("분자진단 · 검사실 워크플로우", ("분자진단·신기술",)),
+        "amr_ast": build_pillar("항균제 내성 · 감수성 시험(AST)", ("항균제 내성·AST",)),
+        "therapy_asp": build_pillar("임상 감염 치료 · 스튜어드십(ASP)", ("임상 감염·치료",)),
+        "epidemiology_ic": build_pillar("병원체 역학 · 감염관리", ("감염관리·역학",)),
     }
 
+    top_sources = [f"{safe_str(p.get('source'))}({safe_str(p.get('title_ko'))[:28]})" for p in pool[:3]]
+    watch_pts = [
+        f"[{safe_str(p.get('source'))} {safe_str(p.get('pub_date'))[5:]}] {safe_str(p.get('title_ko'))}"
+        for p in (ce_papers + must_papers)[:3]
+    ]
+    if not watch_pts:
+        watch_pts = [f"[{safe_str(p.get('source'))}] {safe_str(p.get('title_ko'))}" for p in pool[:3]]
+
     return {
+        "quarter_key": quarter_key,
         "period_label": period_label,
-        "headline": f"{period_label} 핵심 논문 {len(pool)}편(필독 {len(must_papers)}·예외 {len(ce_papers)}) 종합: 상용 분자진단 사각지대 보완과 다제내성균 정밀 AST·단기 표적 치료로의 전환이 가속화되고 있습니다.",
+        "headline": f"{period_label} 핵심 논문 {len(pool)}편(필독 {len(must_papers)} · 예외 {len(ce_papers)}) 요약입니다.",
         "executive_overview": (
-            f"{period_label} 동안 주요 10개 저널에서 선별된 필독·주목 논문 {len(pool)}편을 종합한 결과, 임상미생물·감염병 분야는 "
-            "① 상용 다중 분자진단 시약의 위양성·변이 검출 한계를 분석 후 알고리듬과 프라이머 개정으로 보완하는 품질 고도화, "
-            "② ETP-R 및 MBL 생성 CRE 등 고위험 내성균에 대한 정밀 MIC 보고와 신약 BL/BLI 감수성 검증 확대, "
-            "③ 대규모 3상 RCT 기반의 항생제 투여 기간 단축 및 진단 스튜어드십 정착이라는 세 축을 중심으로 재편되고 있습니다."
+            f"{period_label} 전체 논문 {len(quarter_papers)}편 중 필독·주목 {len(pool)}편을 집계했습니다. "
+            + (f"대표 근거는 {', '.join(top_sources)} 등이며, collect 실행 시 AI 심층 분기 브리핑이 영구 생성됩니다." if top_sources else "")
         ),
         "pillars": pillars,
-        "watch_points": [
-            "상용 다중 PCR 패널(위장관·호흡기·뇌수막염)의 위양성 및 변이주 검출 한계(E2)에 대한 원내 검증 및 판독 주석 반영",
-            "MBL 생성 CRE 및 카바페네마제 음성 ETP-R 장내세균에 대한 신약 BL/BLI(AZA 등) 감수성 검사법 도입 준비",
-            "신속 혈액배양 직접 동정·AST 도입과 연계한 원내 항균제 스튜어드십(ASP) 및 불필요한 추적 혈액배양 감축",
-        ],
+        "watch_points": watch_pts[:3],
         "paper_count": len(pool),
+        "total_paper_count": len(quarter_papers),
         "updated_at": now_kst_str(),
-        "model": "structured-digest(0원 · collect 시 AI 심층 갱신)",
+        "model": "structured-digest(0원 · collect 시 AI 영구 생성)",
     }
 
 
 def generate_macro_trend_briefing_ai(
-    active_papers: List[Dict[str, Any]],
+    quarter_papers: List[Dict[str, Any]],
+    quarter_key: str,
     deep_model: str,
     fallback_model: str,
     api_key: str,
 ) -> Dict[str, Any]:
-    """최근 3개월 롤링 Must-Read·High 논문 종합 고퀄리티 AI 거시 브리핑 생성 (thinking: high, ~₩95/회)"""
-    valid_months = sorted({safe_str(p.get("pub_date"))[:7] for p in active_papers if len(safe_str(p.get("pub_date"))) >= 7})
-    recent_months = valid_months[-3:] if valid_months else []
-    if not recent_months:
-        return build_fallback_macro_trend(active_papers)
-
-    period_label = f"{recent_months[0]} ~ {recent_months[-1]} (최근 {len(recent_months)}개월)"
+    """완료된 특정 분기의 필독·주목 논문 기반 고퀄리티 AI 분기 브리핑 생성 (분기당 1회 영구 캐싱, ~₩95)"""
+    period_label, _, _, _ = _quarter_meta(quarter_key)
     pool = [
-        p for p in active_papers
-        if safe_str(p.get("pub_date"))[:7] in recent_months
-        and safe_str(p.get("importance")) in ("Must-Read", "High")
+        p for p in quarter_papers
+        if safe_str(p.get("importance")) in ("Must-Read", "High")
     ]
     pool.sort(key=lambda x: (1 if x.get("critical_exception") else 0, x.get("importance_score") or 0), reverse=True)
     if not pool:
-        return build_fallback_macro_trend(active_papers)
+        return build_fallback_macro_trend_for_quarter(quarter_papers, quarter_key)
 
     sampled = pool[:110]
     lines = []
     for idx, p in enumerate(sampled, 1):
         fact_short = re.sub(r"\s+", " ", safe_str(p.get("fact_summary_ko")))[:320]
-        note_short = re.sub(r"\s+", " ", re.sub(r"^\[[^\]]+\]\s*", "", safe_str(p.get("ai_clinical_note"))))[:180]
-        ce = f" [예외필독 {p['critical_exception']}]" if p.get("critical_exception") else ""
+        note_short = re.sub(r"\s+", " ", re.sub(r"^\[[^\]]+\]\s*", "", safe_str(p.get("ai_clinical_note"))))[:170]
+        ce = f" [예외 {p['critical_exception']}]" if p.get("critical_exception") else ""
         lines.append(
             f"{idx}. [{p.get('source')}|{p.get('pub_date')}|{p.get('importance')} {p.get('importance_score')}점{ce}|{p.get('topic_category')}] "
-            f"{p.get('title_ko')}\n   - 핵심사실: {fact_short}\n   - 임상검사실포인트: {note_short}"
+            f"{p.get('title_ko')}\n   - 사실: {fact_short}\n   - 검사실포인트: {note_short}"
         )
 
     prompt = "\n".join([
-        "당신은 대한민국 상급종합병원 진단검사의학과(임상미생물학·분자진단·항균제 내성) 전문의를 지원하는 수석 학술 에디터입니다.",
-        f"아래는 {period_label} 동안 주요 10개 의학·미생물 저널에서 선별된 필독(Must-Read)·주목(High) 논문 {len(sampled)}편의 정밀 데이터입니다.",
-        "이 3개월 분량의 핵심 근거를 종합하여, 전문의가 학계의 큰 줄기와 검사실 전략을 한눈에 파악할 수 있는 [고퀄리티 3개월 학술 거시 브리핑]을 JSON으로 작성하십시오.",
+        "당신은 대한민국 대학병원 진단검사의학과(임상미생물·분자진단·항균제 내성) 전문의를 돕는 학술 에디터입니다.",
+        f"아래는 {period_label}({quarter_key}) 동안 수집된 필독(Must-Read)·주목(High) 논문 {len(sampled)}편입니다.",
+        f"이 자료를 바탕으로 {period_label} 전체 흐름을 한눈에 파악할 수 있는 분기 브리핑을 JSON으로 작성하십시오.",
         "",
-        "[작성 원칙 — 최고 수준 전문성 유지]",
-        "1. headline: 최근 3개월 임상미생물·감염병 학계의 가장 핵심적인 패러다임 전환을 담은 1문장 헤드라인(75자 이내).",
-        "2. executive_overview: 3개월 전체를 조망하는 수석 에디터 총평(3~4문장). 진단 기술의 고도화, 내성균 양상 변화, 임상 치료·스튜어드십의 큰 흐름을 유기적으로 엮어 서술.",
-        "3. pillars (4대 핵심 영역 심층 분석 — diagnostics, amr_ast, therapy_asp, epidemiology_ic):",
-        "   각 영역 객체는 다음 3개 필드를 반드시 포함하십시오:",
-        "   - trend_summary (3~4문장): 단순 논문 나열이 아니라, 해당 영역에서 최근 3개월간 두드러진 학술적 흐름, 방법론적 진전, 기존 기준의 한계 보완 맥락을 깊이 있게 서술.",
-        "   - key_evidence (문자열 배열 2~3개): 해당 흐름을 입증하는 대표 논문 2~3편을 '[저널명 MM-DD] 논문 핵심 내용 + 구체적 수치(n수, 민감도/특이도, OR/HR, 사망률 등) 및 의의' 형식으로 명확히 인용.",
-        "   - lab_checkpoint (1~2문장): 대한민국 대학병원 진단검사의학과 전문의가 원내 검사실(분자진단·배양·MALDI-TOF·AST·정도관리·결과보고 주석·ASP 연계)에서 즉시 점검하거나 대비해야 할 구체적 실행 권고.",
-        "4. watch_points (문자열 배열 3개): 향후 1분기 동안 검사실 검증, 장비·시약 도입, CLSI/EUCAST·KDCA 지침 개정 대비를 위해 주시해야 할 핵심 관전 포인트 3가지.",
-        "5. 엄격 준수: 제공된 논문 목록에 없는 사실·수치·기관명을 절대 지어내지 말고, '참고가 될 것으로 사료됩니다', '중요성을 시사합니다' 같은 뻔한 상용구는 완전히 배제하십시오.",
+        "[문체 및 작성 원칙 — 반드시 지킬 것]",
+        "1. 쉽게, 정확하게: 전문 용어(CRE, MBL, AST, mNGS, ddPCR, ASP 등)는 정확히 쓰되, 문장은 짧고 명확하게 풀어 써서 바쁜 전문의가 한 번에 이해할 수 있게 작성하십시오.",
+        "2. 상용어구·미사여구·반복 금지:",
+        "   - 금지 표현: '주목할 만한', '패러다임 전환', '가속화되고 있습니다', '중요성이 부각되고 있습니다', '참고가 될 것으로 사료됩니다', '시사합니다', '획기적인', '괄목할 만한', '다각도로', '심층적으로' 등 공허한 수식어와 상투적 어미.",
+        "   - 같은 논문이나 같은 내용을 총평·4개 영역·관전 포인트에 반복해서 적지 마십시오.",
+        "3. 사실 기반·구체성: 원문에 없는 수치·균종·기관명을 절대 지어내지 말고, '무엇이 문제였고 → 무엇이 확인됐으며 → 검사실에서 무엇을 챙겨야 하는지'만 간결히 적으십시오.",
+        "",
+        "[필드별 작성 기준]",
+        "- headline (1문장, 65자 이내): 이번 분기 가장 큰 변화나 실무 이슈를 꾸밈말 없이 직관적으로 압축.",
+        "- executive_overview (2~3문장): 이번 분기 핵심 흐름을 진단·내성·치료 관점에서 군더더기 없이 요약.",
+        "- pillars (4개 영역: diagnostics, amr_ast, therapy_asp, epidemiology_ic):",
+        "  · trend_summary (2~3문장): 이번 분기 해당 영역에서 실제로 나타난 변화와 핵심 이유를 쉽게 설명.",
+        "  · key_evidence (2~3개): '[저널명 MM-DD] 핵심 결과 + 구체적 수치(n수, 민감도/특이도, OR/HR, 사망률 등)' 형식으로 간결히 인용.",
+        "  · lab_checkpoint (1~2문장): 대학병원 미생물·분자진단 검사실에서 바로 점검하거나 적용할 구체적 행동 1~2가지.",
+        "- watch_points (3개): 다음 분기에 검사실·임상에서 계속 지켜봐야 할 구체적 체크 항목 3가지(각 1문장).",
         "",
         "\n".join(lines),
     ])
@@ -2904,7 +2935,7 @@ def generate_macro_trend_briefing_ai(
         "diagnostics": "분자진단 · 검사실 워크플로우",
         "amr_ast": "항균제 내성 · 감수성 시험(AST)",
         "therapy_asp": "임상 감염 치료 · 스튜어드십(ASP)",
-        "epidemiology_ic": "신종·유행 병원체 · 감염관리 역학",
+        "epidemiology_ic": "병원체 역학 · 감염관리",
     }
     clean_pillars: Dict[str, Any] = {}
     for pk, ptitle in pillar_titles.items():
@@ -2912,17 +2943,19 @@ def generate_macro_trend_briefing_ai(
         clean_pillars[pk] = {
             "title": ptitle,
             "trend_summary": safe_str(pobj.get("trend_summary")),
-            "key_evidence": [safe_str(x) for x in (pobj.get("key_evidence") or []) if safe_str(x)][:4],
+            "key_evidence": [safe_str(x) for x in (pobj.get("key_evidence") or []) if safe_str(x)][:3],
             "lab_checkpoint": safe_str(pobj.get("lab_checkpoint")),
         }
 
     return {
+        "quarter_key": quarter_key,
         "period_label": period_label,
         "headline": safe_str(parsed.get("headline")),
         "executive_overview": safe_str(parsed.get("executive_overview")),
         "pillars": clean_pillars,
-        "watch_points": [safe_str(x) for x in (parsed.get("watch_points") or []) if safe_str(x)][:4],
+        "watch_points": [safe_str(x) for x in (parsed.get("watch_points") or []) if safe_str(x)][:3],
         "paper_count": len(sampled),
+        "total_paper_count": len(quarter_papers),
         "updated_at": now_kst_str(),
         "model": f"{used_model}(thinking:high)",
     }
@@ -3239,40 +3272,55 @@ def _layout_period_mds(
 
 def build_paper_trends_payload(items: List[Dict[str, Any]], cfg_map: Dict[str, str]) -> Dict[str, Any]:
     """
-    [AI 비용 0원] v8.4.2 동적 분기별 MDS 키워드 클러스터 맵 + 최근 3개월 심층 거시 브리핑:
-    1) 고정 18종 제한 폐지 -> 매 3개월 분기마다 활성 논문에서 상위 핵심 키워드(최대 18종)를 동적 추출
-       (44개 임상미생물·감염병 개념 풀 + 미등록 신종 약제 자동 발굴).
-    2) 시간순(Q_1 -> Q_2 -> Q_3 -> Q_4)으로 이전 분기 좌표를 Procrustes 정렬로 참조하여,
-       유지되는 키워드는 기존 위치를 지키고, 새로 부상한 키워드(🆕)는 연관 군집 옆에 자동 배치되며,
-       사라진 키워드(📉)는 이탈 배지로 별도 추적함.
+    [AI 비용 0원] v8.4.3 완료 분기 1:1 동기화 동적 MDS 맵 + 분기별 심층 거시 브리핑:
+    1) 고정 캘린더 분기(Q1:1~3, Q2:4~6, Q3:7~9, Q4:10~12) 중 완전히 종료된 분기만 분석·노출
+       (예: 11월 기준 Q4는 12월 31일 종료 전까지 pendingQuarters로 보류하고 Q3를 기본 표시).
+    2) 상단 MDS 클러스터 맵과 하단 심층 브리핑을 분기별로 1:1 동기화(periods[qk].macroBriefing 탑재).
+    3) 완료 분기별 AI 심층 브리핑은 config(paper_macro_trend_v843)에 분기당 1회 영구 캐싱.
     """
     active_papers = [
         x for x in items
         if x.get("content_type") == "paper" and safe_str(x.get("source")).upper() != "NRM"
     ]
     by_quarter: Dict[str, List[Dict[str, Any]]] = {}
-    years_set: Set[str] = set()
     for p in active_papers:
         qk = _date_to_quarter_key(p.get("pub_date", ""))
         if qk:
             by_quarter.setdefault(qk, []).append(p)
-            years_set.add(qk[:4])
 
-    # 유의미한 분기(최소 5편 이상)를 시간순 정렬 (5편 미만 초기 분기는 스킵하거나 유지)
+    today_d = now_kst().date()
     all_quarters = sorted(by_quarter.keys())
-    meaningful_quarters = [q for q in all_quarters if len(by_quarter[q]) >= 5]
-    if not meaningful_quarters:
-        meaningful_quarters = all_quarters
-    years = sorted(years_set, reverse=True)
+    completed_quarters: List[str] = []
+    pending_quarters: List[Dict[str, Any]] = []
+
+    for qk in all_quarters:
+        cnt_q = len(by_quarter[qk])
+        q_lbl, _, _, avail_str = _quarter_meta(qk)
+        if _is_quarter_completed(qk, today_d):
+            if cnt_q >= 5:
+                completed_quarters.append(qk)
+        else:
+            if cnt_q > 0:
+                pending_quarters.append({
+                    "key": qk,
+                    "label": q_lbl,
+                    "paperCount": cnt_q,
+                    "availableAfter": avail_str,
+                })
+
+    years = sorted({q[:4] for q in completed_quarters}, reverse=True)
+    completed_papers = [p for qk in completed_quarters for p in by_quarter.get(qk, [])]
 
     pool_compiled = [(kid, lbl, cat, pat, re.compile(pat, re.IGNORECASE)) for kid, lbl, cat, pat in DYNAMIC_CONCEPT_POOL_V842]
     pool_regexes = [rx for _, _, _, _, rx in pool_compiled]
 
-    # 전체 누적 카운트 계산 (참고용)
-    all_texts = [f"{p.get('title_orig', '')} {p.get('title_ko', '')} {p.get('fact_summary_ko', '')}" for p in active_papers]
+    # 완료 분기 전체 누적 카운트
+    all_completed_texts = [f"{p.get('title_orig', '')} {p.get('title_ko', '')} {p.get('fact_summary_ko', '')}" for p in completed_papers]
     total_count_map: Dict[str, int] = {}
     for kid, _, _, _, rx in pool_compiled:
-        total_count_map[kid] = sum(1 for t in all_texts if rx.search(t))
+        total_count_map[kid] = sum(1 for t in all_completed_texts if rx.search(t))
+
+    cached_by_quarter = _load_quarterly_trend_cache(cfg_map)
 
     periods_payload: Dict[str, Dict[str, Any]] = {}
     prev_positions: Dict[str, Tuple[float, float]] = {}
@@ -3282,7 +3330,7 @@ def build_paper_trends_payload(items: List[Dict[str, Any]], cfg_map: Dict[str, s
     all_seen_ids: Set[str] = set()
     prev_q_key = ""
 
-    for q_idx, qk in enumerate(meaningful_quarters):
+    for q_idx, qk in enumerate(completed_quarters):
         q_papers = by_quarter[qk]
         q_texts = [f"{p.get('title_orig', '')} {p.get('title_ko', '')} {p.get('fact_summary_ko', '')}" for p in q_papers]
         min_df = 2 if len(q_papers) < 100 else 3
@@ -3296,13 +3344,13 @@ def build_paper_trends_payload(items: List[Dict[str, Any]], cfg_map: Dict[str, s
             if c >= min_df:
                 scored_cands.append((c, kid, lbl, cat, pat))
 
-        # Layer 2: 미등록 신종 약제 자동 발굴 (분기 내 4편 이상 등장)
+        # Layer 2: 미등록 신종 약제 자동 발굴
         novel_cands = _mine_novel_clinical_terms(q_texts, pool_regexes, min_df=max(4, min_df + 1), max_novel=2)
         for kid, lbl, cat, pat in novel_cands:
             rx_n = re.compile(pat, re.IGNORECASE)
             c = sum(1 for t in q_texts if rx_n.search(t))
             q_counts_map[kid] = c
-            total_count_map[kid] = sum(1 for t in all_texts if rx_n.search(t))
+            total_count_map[kid] = sum(1 for t in all_completed_texts if rx_n.search(t))
             scored_cands.append((c, kid, lbl, cat, pat))
 
         scored_cands.sort(key=lambda x: (x[0], 1 if x[1] in prev_active_ids else 0), reverse=True)
@@ -3319,7 +3367,6 @@ def build_paper_trends_payload(items: List[Dict[str, Any]], cfg_map: Dict[str, s
             is_base_or_total=(q_idx == 0),
         )
 
-        # 직전 분기에는 있었으나 이번 분기 TOP 18에서 이탈(소멸/감소)한 키워드 집계
         cur_ids = {nd["id"] for nd in nodes_q}
         faded_list = []
         if prev_q_key:
@@ -3341,20 +3388,21 @@ def build_paper_trends_payload(items: List[Dict[str, Any]], cfg_map: Dict[str, s
         for nd in nodes_q:
             max_c = max(max_c, nd["count"], nd["prevCount"] or 0)
 
-        yr_s, q_num = qk.split("-Q")
-        q_month_span = {"1": "1~3월", "2": "4~6월", "3": "7~9월", "4": "10~12월"}.get(q_num, "")
+        q_lbl, _, _, _ = _quarter_meta(qk)
+        q_briefing = cached_by_quarter.get(qk) or build_fallback_macro_trend_for_quarter(q_papers, qk)
+
         periods_payload[qk] = {
             "key": qk,
-            "label": f"{yr_s}년 {q_num}분기 ({q_month_span})",
+            "label": q_lbl,
             "prevKey": prev_q_key,
             "paperCount": len(q_papers),
             "maxCount": max_c,
             "nodes": nodes_q,
             "edges": edges_q,
             "faded": faded_list,
+            "macroBriefing": q_briefing,
         }
 
-        # Update rolling anchor memory for next quarter
         for kid, xy in final_pos_q.items():
             prev_positions[kid] = xy
         all_seen_ids.update(cur_ids)
@@ -3366,7 +3414,7 @@ def build_paper_trends_payload(items: List[Dict[str, Any]], cfg_map: Dict[str, s
         prev_count_map_all = q_counts_map
         prev_q_key = qk
 
-    # 전체 누적("total") 뷰: 가장 최근 분기까지의 앵커 좌표(prev_positions)를 참조하여 배치
+    # 완료 분기 전체 누적("total") 뷰
     tot_cands = []
     for kid, lbl, cat, pat, _ in pool_compiled:
         c = total_count_map.get(kid, 0)
@@ -3376,7 +3424,7 @@ def build_paper_trends_payload(items: List[Dict[str, Any]], cfg_map: Dict[str, s
     top_total = [(kid, lbl, cat, pat) for _, kid, lbl, cat, pat in tot_cands[:18]]
 
     nodes_tot, edges_tot, _ = _layout_period_mds(
-        period_papers=active_papers,
+        period_papers=completed_papers,
         selected_concepts=top_total,
         prev_positions=prev_positions,
         prev_active_ids=set(),
@@ -3385,39 +3433,33 @@ def build_paper_trends_payload(items: List[Dict[str, Any]], cfg_map: Dict[str, s
         total_count_map=total_count_map,
         is_base_or_total=True,
     )
+    default_period = completed_quarters[-1] if completed_quarters else "total"
+    latest_briefing = (
+        periods_payload[default_period]["macroBriefing"]
+        if default_period in periods_payload
+        else build_fallback_macro_trend_for_quarter(completed_papers, "total")
+    )
     periods_payload["total"] = {
         "key": "total",
-        "label": "전체 누적 (상위 18개 핵심 키워드)",
+        "label": "완료 분기 전체 누적",
         "prevKey": "",
-        "paperCount": len(active_papers),
+        "paperCount": len(completed_papers),
         "maxCount": max([1] + [nd["count"] for nd in nodes_tot]),
         "nodes": nodes_tot,
         "edges": edges_tot,
         "faded": [],
+        "macroBriefing": build_fallback_macro_trend_for_quarter(completed_papers, "total"),
     }
 
-    # Load cached AI macro briefing from config if valid, else 0-won fallback
-    macro_briefing = None
-    raw_cached = safe_str(cfg_map.get(TREND_CONFIG_KEY))
-    if raw_cached:
-        try:
-            parsed_cache = json.loads(raw_cached)
-            if isinstance(parsed_cache, dict) and parsed_cache.get("headline"):
-                macro_briefing = parsed_cache
-        except Exception:
-            pass
-    if macro_briefing is None:
-        macro_briefing = build_fallback_macro_trend(active_papers)
-
-    default_period = meaningful_quarters[-1] if meaningful_quarters else "total"
     return {
-        "mode": "dynamic_quarterly_mds_v842",
+        "mode": "completed_quarter_synced_v843",
         "years": years,
-        "quarters": meaningful_quarters,
+        "quarters": completed_quarters,
+        "pendingQuarters": pending_quarters,
         "defaultPeriod": default_period,
         "viewport": {"width": 1000, "height": 610},
         "periods": periods_payload,
-        "macroBriefing": macro_briefing,
+        "macroBriefing": latest_briefing,
     }
 
 
@@ -4332,24 +4374,38 @@ def mode_collect(allow_h1: bool = False) -> None:
     status = "Success" if (not fetch_errors and not ai_errors) else ("Partial" if new_count > 0 else "Fail")
     append_run_log(ss, run_id, now_str, "ALL", status, total_fetched, new_count, total_dup, " / ".join(notes))
 
-    # 신규 논문이 추가되었거나 트렌드 캐시가 비어 있을 때만 최근 3개월 AI 거시 브리핑 1회 갱신 (~₩36)
-    if new_count > 0 or not safe_str(cfg.get(TREND_CONFIG_KEY)):
-        try:
-            all_items_now = read_sheet_as_dicts(ss, SHEET_ITEMS)
-            active_papers_now = [
-                x for x in all_items_now
-                if safe_str(x.get("content_type")) == "paper" and safe_str(x.get("source")).upper() != "NRM"
-            ]
-            trend_obj = generate_macro_trend_briefing_ai(active_papers_now, deep_model, fallback_model, gemini_key)
-            upsert_config_value(
-                ss,
-                TREND_CONFIG_KEY,
-                json.dumps(trend_obj, ensure_ascii=False, separators=(",", ":")),
-                "v8.4.0 최근 3개월 롤링 AI 논문 거시 브리핑 캐시",
-            )
-            print(f"[OK] 최근 3개월 AI 거시 브리핑 갱신 완료 ({trend_obj.get('period_label')}, {trend_obj.get('model')})")
-        except Exception as tr_err:
-            print(f"[경고] AI 거시 브리핑 갱신 건너뜀(기존 캐시 유지): {tr_err}")
+    # 완료된 최신 분기의 AI 심층 브리핑이 아직 캐시에 없을 때만 분기당 1회 생성·영구 캐싱 (~₩95, 중복 과금 0원)
+    try:
+        cached_trends = _load_quarterly_trend_cache(cfg)
+        all_items_now = read_sheet_as_dicts(ss, SHEET_ITEMS)
+        active_papers_now = [
+            x for x in all_items_now
+            if safe_str(x.get("content_type")) == "paper" and safe_str(x.get("source")).upper() != "NRM"
+        ]
+        by_q_now: Dict[str, List[Dict[str, Any]]] = {}
+        for p in active_papers_now:
+            qk = _date_to_quarter_key(p.get("pub_date", ""))
+            if qk and _is_quarter_completed(qk):
+                by_q_now.setdefault(qk, []).append(p)
+        completed_qs_now = sorted(q for q, plist in by_q_now.items() if len(plist) >= 5)
+        if completed_qs_now:
+            latest_done_q = completed_qs_now[-1]
+            if latest_done_q not in cached_trends:
+                trend_obj = generate_macro_trend_briefing_ai(
+                    by_q_now[latest_done_q], latest_done_q, deep_model, fallback_model, gemini_key
+                )
+                cached_trends[latest_done_q] = trend_obj
+                upsert_config_value(
+                    ss,
+                    TREND_CONFIG_KEY,
+                    json.dumps(cached_trends, ensure_ascii=False, separators=(",", ":")),
+                    "v8.4.3 완료 분기별 AI 논문 심층 브리핑 영구 캐시",
+                )
+                print(f"[OK] 완료 분기 AI 브리핑 영구 생성 완료 ({latest_done_q}, {trend_obj.get('model')})")
+            else:
+                print(f"[SKIP] 최신 완료 분기({latest_done_q}) AI 브리핑 이미 영구 캐시됨 (추가 과금 0원)")
+    except Exception as tr_err:
+        print(f"[경고] 완료 분기 AI 브리핑 생성 건너뜀(기존 캐시 유지): {tr_err}")
 
     sync_sheet_to_dashboard_json(ss)
 
@@ -4625,7 +4681,7 @@ def mode_sync_kdca_and_dashboard() -> None:
 
 
 def mode_update_trend_only() -> None:
-    """최근 3개월 롤링 필독·주목 논문 기반 AI 거시 브리핑 단독 갱신 (~₩36/회) + dashboard.json 재생성"""
+    """완료된 분기 중 미생성 AI 브리핑을 생성·영구 캐싱 + dashboard.json 재생성"""
     ss = connect_spreadsheet()
     cfg = load_config_map(ss)
     gemini_key = os.environ.get("GEMINI_API_KEY", "").strip()
@@ -4637,23 +4693,35 @@ def mode_update_trend_only() -> None:
         x for x in all_items
         if safe_str(x.get("content_type")) == "paper" and safe_str(x.get("source")).upper() != "NRM"
     ]
-    trend_obj = generate_macro_trend_briefing_ai(active_papers, deep_model, fallback_model, gemini_key)
-    upsert_config_value(
-        ss,
-        TREND_CONFIG_KEY,
-        json.dumps(trend_obj, ensure_ascii=False, separators=(",", ":")),
-        "v8.4.0 최근 3개월 롤링 AI 논문 거시 브리핑 캐시",
-    )
+    by_q: Dict[str, List[Dict[str, Any]]] = {}
+    for p in active_papers:
+        qk = _date_to_quarter_key(p.get("pub_date", ""))
+        if qk and _is_quarter_completed(qk):
+            by_q.setdefault(qk, []).append(p)
+    completed_qs = sorted(q for q, plist in by_q.items() if len(plist) >= 5)
+    cached_trends = _load_quarterly_trend_cache(cfg)
+    generated = []
+    for qk in completed_qs[-2:]:
+        if qk not in cached_trends:
+            cached_trends[qk] = generate_macro_trend_briefing_ai(by_q[qk], qk, deep_model, fallback_model, gemini_key)
+            generated.append(qk)
+    if generated:
+        upsert_config_value(
+            ss,
+            TREND_CONFIG_KEY,
+            json.dumps(cached_trends, ensure_ascii=False, separators=(",", ":")),
+            "v8.4.3 완료 분기별 AI 논문 심층 브리핑 영구 캐시",
+        )
     append_run_log(
         ss,
         "GH_TREND_" + now_kst().strftime("%Y%m%d_%H%M%S"),
         now_kst_str(),
         "TREND_AI",
         "Success",
-        trend_obj.get("paper_count", 0),
-        1,
+        len(completed_qs),
+        len(generated),
         0,
-        f"{CODE_VERSION} 최근 3개월 AI 거시 브리핑 갱신 ({trend_obj.get('period_label')})",
+        f"{CODE_VERSION} 완료 분기 AI 브리핑 생성: {', '.join(generated) if generated else '모두 캐시됨(0원)'}",
     )
     sync_sheet_to_dashboard_json(ss)
 
