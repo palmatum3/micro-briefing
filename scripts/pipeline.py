@@ -32,7 +32,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 import requests
 
-CODE_VERSION = "v8.4.3"
+CODE_VERSION = "v8.5.0"
 KST = datetime.timezone(datetime.timedelta(hours=9))
 
 SHEET_ITEMS = "items"
@@ -40,6 +40,7 @@ SHEET_LOGS = "run_logs"
 SHEET_CONFIG = "config"
 SHEET_KDCA_SURV = "kdca_surveillance"
 SHEET_HAI_STATS = "hai_stats"
+SHEET_IVD = "ivd_catalog"
 SHEET_PILOT = "pilot_v82"
 SHEET_DRYRUN = "dryrun_v83"
 TREND_CONFIG_KEY = "paper_macro_trend_v843"
@@ -299,7 +300,7 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 OUTPUT_JSON_PATH = ROOT_DIR / "docs" / "data" / "dashboard.json"
 
 HTTP = requests.Session()
-HTTP.headers.update({"User-Agent": "ClinicalMicroBriefing/8.4.3 (Academic Surveillance Bot)"})
+HTTP.headers.update({"User-Agent": "ClinicalMicroBriefing/8.5.0 (Academic Surveillance Bot)"})
 
 
 def now_kst() -> datetime.datetime:
@@ -3463,6 +3464,187 @@ def build_paper_trends_payload(items: List[Dict[str, Any]], cfg_map: Dict[str, s
     }
 
 
+
+
+def _map_ivd_rating(metric_key: str, raw_val: str) -> Dict[str, Any]:
+    v = safe_str(raw_val)
+    if v not in ("상", "중", "하"):
+        v = "중"
+    level_map = {"상": 3, "중": 2, "하": 1}
+    desc_table = {
+        "cost_init": {
+            "상": "대형 · 고가 투자",
+            "중": "중형 · 모듈형",
+            "하": "소형 · 도입부담 낮음",
+        },
+        "cost_running": {
+            "상": "고가 · 일체형 카트리지",
+            "중": "중가 · 전용 패널/카드",
+            "하": "저가 · 범용/개방형",
+        },
+        "ease_of_use": {
+            "상": "전자동 · 원터치",
+            "중": "반자동 · 일부 전처리",
+            "하": "수작업 · 분리 운용",
+        },
+    }
+    return {
+        "grade": v,
+        "level": level_map[v],
+        "label": desc_table.get(metric_key, {}).get(v, v),
+    }
+
+
+def build_ivd_catalog_payload(
+    ivd_rows: List[Dict[str, Any]],
+    items: List[Dict[str, Any]],
+    reference_standards: Dict[str, Any],
+) -> Dict[str, Any]:
+    """
+    [AI 비용 0원] ivd_catalog 시트 데이터를 정제하고,
+    items DB의 학술 평가 논문·E2 주의보 및 referenceStandards(CLSI)를 자동 매칭함.
+    """
+    std_lookup: Dict[str, Dict[str, Any]] = {}
+    for grp_key in ("clsi_m", "clsi_mm", "eucast"):
+        for st in reference_standards.get(grp_key, []) or []:
+            code = safe_str(st.get("code")).upper()
+            if code:
+                std_lookup[code] = {
+                    "code": safe_str(st.get("code")),
+                    "titleKo": safe_str(st.get("titleKo")),
+                    "edition": safe_str(st.get("edition")),
+                    "status": safe_str(st.get("status")),
+                    "url": safe_str(st.get("url")),
+                }
+
+    searchable_items = [
+        it for it in items
+        if it.get("content_type") in ("paper", "guideline")
+    ]
+
+    devices: List[Dict[str, Any]] = []
+    categories_ordered: List[str] = []
+    tag_counts: Dict[str, int] = {}
+
+    for r in ivd_rows:
+        did = safe_str(r.get("device_id"))
+        dname = safe_str(r.get("device_name"))
+        if not did or not dname:
+            continue
+        status = safe_str(r.get("status")).lower() or "active"
+        if status not in ("active", "sponsor", "featured"):
+            continue
+
+        cat = safe_str(r.get("category")) or "기타 장비"
+        if cat not in categories_ordered:
+            categories_ordered.append(cat)
+
+        wf_tags = [t.strip() for t in safe_str(r.get("workflow_tags")).split("|") if t.strip()]
+        for tg in wf_tags:
+            tag_counts[tg] = tag_counts.get(tg, 0) + 1
+
+        # Match CLSI standards
+        clsi_list: List[Dict[str, Any]] = []
+        for raw_c in safe_str(r.get("clsi_refs")).split("|"):
+            c_clean = raw_c.strip()
+            if not c_clean:
+                continue
+            found_std = std_lookup.get(c_clean.upper())
+            if found_std:
+                clsi_list.append(found_std)
+            else:
+                clsi_list.append({
+                    "code": c_clean,
+                    "titleKo": c_clean,
+                    "edition": "",
+                    "status": "현행 참조",
+                    "url": "https://clsi.org/standards/",
+                })
+
+        # Match academic papers & E2 alerts from items DB
+        pat_str = safe_str(r.get("paper_match_regex"))
+        matched_papers: List[Dict[str, Any]] = []
+        e2_alerts: List[Dict[str, Any]] = []
+        if pat_str:
+            try:
+                rx = re.compile(pat_str, re.IGNORECASE)
+                hits = []
+                for it in searchable_items:
+                    hay = f"{it.get('title_orig', '')} {it.get('title_ko', '')} {it.get('fact_summary_ko', '')}"
+                    if rx.search(hay):
+                        hits.append(it)
+                hits.sort(
+                    key=lambda x: (
+                        1 if x.get("critical_exception") == "E2" else 0,
+                        1 if x.get("critical_exception") else 0,
+                        x.get("importance_score") or 0,
+                        x.get("pub_date") or "",
+                    ),
+                    reverse=True,
+                )
+                for h in hits:
+                    entry = {
+                        "uid": h.get("uid", ""),
+                        "source": h.get("source", ""),
+                        "pub_date": h.get("pub_date", ""),
+                        "title_ko": h.get("title_ko", ""),
+                        "title_orig": h.get("title_orig", ""),
+                        "importance": h.get("importance", "Medium"),
+                        "importance_score": h.get("importance_score"),
+                        "critical_exception": h.get("critical_exception", ""),
+                        "exception_reason": h.get("exception_reason", ""),
+                        "fact_summary_ko": h.get("fact_summary_ko", ""),
+                        "source_url": h.get("source_url", ""),
+                    }
+                    if entry["critical_exception"] == "E2":
+                        e2_alerts.append(entry)
+                    matched_papers.append(entry)
+            except re.error:
+                pass
+
+        img_file = safe_str(r.get("image_file"))
+        img_url = f"./images/devices/{img_file}" if img_file else ""
+
+        devices.append({
+            "device_id": did,
+            "category": cat,
+            "device_name": dname,
+            "manufacturer": safe_str(r.get("manufacturer")),
+            "highlight_tag": safe_str(r.get("highlight_tag")),
+            "cost_init": _map_ivd_rating("cost_init", r.get("cost_init", "중")),
+            "cost_running": _map_ivd_rating("cost_running", r.get("cost_running", "중")),
+            "ease_of_use": _map_ivd_rating("ease_of_use", r.get("ease_of_use", "중")),
+            "workflow_tags": wf_tags,
+            "reg_reimb": safe_str(r.get("reg_reimb")),
+            "method_principle": safe_str(r.get("method_principle")),
+            "test_menu": safe_str(r.get("test_menu")),
+            "specimen_volume": safe_str(r.get("specimen_volume")),
+            "tat_hands_on": safe_str(r.get("tat_hands_on")),
+            "throughput_mode": safe_str(r.get("throughput_mode")),
+            "performance_summary": safe_str(r.get("performance_summary")),
+            "qc_storage": safe_str(r.get("qc_storage")),
+            "footprint_lis": safe_str(r.get("footprint_lis")),
+            "pros": safe_str(r.get("pros")),
+            "cons_check": safe_str(r.get("cons_check")),
+            "clsi_refs": clsi_list,
+            "e2_alerts": e2_alerts,
+            "matched_papers": matched_papers[:8],
+            "total_matched_papers": len(matched_papers),
+            "image_url": img_url,
+            "image_credit": safe_str(r.get("image_credit")),
+            "status": status,
+            "updated_at": safe_str(r.get("updated_at")),
+        })
+
+    sorted_tags = sorted(tag_counts.items(), key=lambda x: (-x[1], x[0]))
+    return {
+        "totalDevices": len(devices),
+        "categories": categories_ordered,
+        "workflowTags": [{"tag": k, "count": v} for k, v in sorted_tags],
+        "devices": devices,
+    }
+
+
 def write_dashboard_json(
     item_rows: List[Dict[str, Any]],
     surv_rows: List[Dict[str, Any]],
@@ -3471,6 +3653,7 @@ def write_dashboard_json(
     cfg_map: Dict[str, str],
     run_live_standards_probe: bool = False,
     precomputed_live: Optional[Tuple[Dict[str, Any], List[Dict[str, Any]], List[Dict[str, Any]], str]] = None,
+    ivd_rows: Optional[List[Dict[str, Any]]] = None,
 ) -> str:
     items = []
     for r in item_rows:
@@ -3571,6 +3754,7 @@ def write_dashboard_json(
     payload["referenceStandards"] = rs_live
     payload["notifiableDiseases"] = noti_live
     payload["kdcaGuidelineReleases"] = kdca_rel_live
+    payload["ivdCatalog"] = build_ivd_catalog_payload(ivd_rows or [], items, rs_live)
 
     OUTPUT_JSON_PATH.parent.mkdir(parents=True, exist_ok=True)
     OUTPUT_JSON_PATH.write_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
@@ -3599,7 +3783,11 @@ def sync_sheet_to_dashboard_json(ss, run_live_standards_probe: bool = True) -> s
     surv = read_sheet_as_dicts(ss, SHEET_KDCA_SURV)
     hai = read_sheet_as_dicts(ss, SHEET_HAI_STATS)
     logs = read_sheet_as_dicts(ss, SHEET_LOGS)
-    return write_dashboard_json(items, surv, hai, logs, cfg_map, run_live_standards_probe=run_live_standards_probe)
+    try:
+        ivd = read_sheet_as_dicts(ss, SHEET_IVD)
+    except Exception:
+        ivd = []
+    return write_dashboard_json(items, surv, hai, logs, cfg_map, run_live_standards_probe=run_live_standards_probe, ivd_rows=ivd)
 
 
 # =====================================================================
@@ -3800,10 +3988,15 @@ def mode_test_apis(allow_h1: bool = False) -> None:
     surv_all = read_sheet_as_dicts(ss, SHEET_KDCA_SURV)
     hai_all = read_sheet_as_dicts(ss, SHEET_HAI_STATS)
     logs_all = read_sheet_as_dicts(ss, SHEET_LOGS)
+    try:
+        ivd_all = read_sheet_as_dicts(ss, SHEET_IVD)
+    except Exception:
+        ivd_all = []
     write_dashboard_json(
         items_all, surv_all, hai_all, logs_all, cfg_map,
         run_live_standards_probe=False,
         precomputed_live=(rs_live, noti_live, kdca_rel_live, live_std_msg),
+        ivd_rows=ivd_all,
     )
 
 
@@ -4624,6 +4817,7 @@ def mode_build_from_csv(csv_dir: Path) -> None:
     surv = load_csv("임상미생물_정보_수집_DB_MVP_JCM_kdca_surveillance.csv")
     hai = load_csv("임상미생물_정보_수집_DB_MVP_JCM_hai_stats.csv")
     logs = load_csv("임상미생물_정보_수집_DB_MVP_JCM_run_logs.csv")
+    ivd = load_csv("임상미생물_정보_수집_DB_MVP_JCM_ivd_catalog.csv")
     cfg_rows = load_csv("임상미생물_정보_수집_DB_MVP_JCM_config.csv")
     cfg_map = {safe_str(r.get("key")): safe_str(r.get("value")) for r in cfg_rows if safe_str(r.get("key"))}
     cfg_map.setdefault("gemini_model_fallback", "gemini-3.6-flash")
@@ -4632,7 +4826,7 @@ def mode_build_from_csv(csv_dir: Path) -> None:
     cfg_map.setdefault("cutoff_must_read", "85")
     cfg_map.setdefault("cutoff_high", "70")
     cfg_map.setdefault("cutoff_medium", "45")
-    write_dashboard_json(items, surv, hai, logs, cfg_map)
+    write_dashboard_json(items, surv, hai, logs, cfg_map, ivd_rows=ivd)
 
 
 def mode_sync_sheet_only() -> None:
