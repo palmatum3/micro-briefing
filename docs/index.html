@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="robots" content="noindex, nofollow" />
-  <title>임상미생물 주간 브리핑 v8.5.0</title>
+  <title>임상미생물 주간 브리핑 v8.5.1</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
   <style>
     :root {
@@ -1541,7 +1541,7 @@
     <div class="topbar-inner">
       <div class="brand-row">
         <div>
-          <div class="brand-title">임상미생물 주간 브리핑 <span class="ver-pill">v8.5.0</span></div>
+          <div class="brand-title">임상미생물 주간 브리핑 <span class="ver-pill">v8.5.1</span></div>
           <div class="brand-sub" id="brandSub">GitHub Pages 메인 대시보드 · 데이터 불러오는 중...</div>
         </div>
         <div class="meta-actions">
@@ -2053,7 +2053,7 @@
     <div class="footer-note">
       본 대시보드는 공개 학술 초록(PubMed·Crossref) 및 공식 감염병 통계(KDCA·WHO) 기반 참고 요약입니다.
       AI 해석은 원문 사실과 분리 표기되며, 최종 임상·검사실 의사결정 시 반드시 원문을 확인하세요.
-      (북마크는 현재 기기 브라우저에 개인별 저장 · GitHub Pages 메인 단일화 v8.5.0)
+      (북마크는 현재 기기 브라우저에 개인별 저장 · GitHub Pages 메인 단일화 v8.5.1)
     </div>
   </main>
 
@@ -3731,7 +3731,7 @@
       var fallbackSvg = getCategorySilhouetteSvg(dev.category);
       if (dev.image_url) {
         return '<div class="ivd-thumb" title="' + esc(dev.image_credit || dev.device_name) + '">' +
-          '<img src="' + esc(dev.image_url) + '" alt="' + esc(dev.device_name) + '" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';" />' +
+          '<img src="' + esc(dev.image_url) + '" alt="' + esc(dev.device_name) + '" onerror="this.style.display=\'none\'; this.nextElementSibling.style.display=\'flex\';" />' +
           '<div style="display:none; flex-direction:column; align-items:center; justify-content:center;">' + fallbackSvg + '</div>' +
         '</div>';
       }
@@ -3849,7 +3849,7 @@
         var isCmp = state.ivdCompareIds.indexOf(d.device_id) !== -1;
         var e2Cnt = (d.e2_alerts || []).length;
         var pCnt = d.total_matched_papers || 0;
-        var safeId = esc(d.device_id).replace(/'/g, "\'");
+        var safeId = esc(d.device_id).replace(/'/g, "\\'");
 
         var e2Badge = e2Cnt > 0
           ? '<span class="badge b-ce" title="위양성·위음성 또는 판독 유의 문헌 보고됨">⚠️ E2 주의보 ' + e2Cnt + '건</span>'
@@ -3884,8 +3884,8 @@
               '<div class="ivd-spec-line"><span class="ivd-spec-k">처리량·구동</span><span class="ivd-spec-v">' + esc(d.throughput_mode) + '</span></div>' +
             '</div>' +
             '<div class="ivd-card-foot">' +
-              '<button class="btn-primary-sm" type="button" onclick="openIvdDetailModal('' + safeId + '')">📋 전체 스펙 · Reference 보기</button>' +
-              '<button class="btn-cmp' + (isCmp ? ' active' : '') + '" type="button" onclick="toggleIvdCompare('' + safeId + '')">' + (isCmp ? '✓ 비교담김' : '+ 비교담기') + '</button>' +
+              '<button class="btn-primary-sm" type="button" onclick="openIvdDetailModal(\'' + safeId + '\')">📋 전체 스펙 · Reference 보기</button>' +
+              '<button class="btn-cmp' + (isCmp ? ' active' : '') + '" type="button" onclick="toggleIvdCompare(\'' + safeId + '\')">' + (isCmp ? '✓ 비교담김' : '+ 비교담기') + '</button>' +
             '</div>' +
           '</article>'
         );
@@ -3931,10 +3931,10 @@
       state.ivdCompareIds.forEach(function(id) {
         var dev = byId[id];
         if (!dev) return;
-        var safeId = esc(id).replace(/'/g, "\'");
+        var safeId = esc(id).replace(/'/g, "\\'");
         chips.push(
           '<span class="ivd-dock-chip">' + esc(dev.device_name) +
-          ' <button type="button" title="제거" onclick="toggleIvdCompare('' + safeId + '')">×</button></span>'
+          ' <button type="button" title="제거" onclick="toggleIvdCompare(\'' + safeId + '\')">×</button></span>'
         );
       });
       chipsEl.innerHTML = chips.join('');
@@ -3947,7 +3947,7 @@
       var dev = all.find(function(d) { return d.device_id === deviceId; });
       if (!dev) return;
       var isCmp = state.ivdCompareIds.indexOf(dev.device_id) !== -1;
-      var safeId = esc(dev.device_id).replace(/'/g, "\'");
+      var safeId = esc(dev.device_id).replace(/'/g, "\\'");
 
       var clsiHtml = (dev.clsi_refs || []).map(function(c) {
         return '<a class="btn" href="' + esc(c.url) + '" target="_blank" rel="noopener noreferrer" style="font-size:0.78rem; padding:5px 10px;">📘 ' + esc(c.code) + ' · ' + esc(c.titleKo) + ' ↗</a>';
@@ -3981,8 +3981,7 @@
               '<span style="font-size:0.75rem; color:#64748b; margin-left:auto;">' + esc(p.pub_date) + '</span>' +
             '</div>' +
             '<div style="font-weight:800; color:#0f172a; margin-bottom:3px;">' + esc(p.title_ko) + '</div>' +
-            '<div style="color:#475569; font-size:0.79rem; margin-bottom:5px;">' + esc((p.fact_summary_ko || '').replace(/
-+/g, ' ')) + '</div>' +
+            '<div style="color:#475569; font-size:0.79rem; margin-bottom:5px;">' + esc((p.fact_summary_ko || '').replace(/\n+/g, ' ')) + '</div>' +
             (p.source_url ? '<a href="' + esc(p.source_url) + '" target="_blank" rel="noopener noreferrer" style="font-size:0.77rem; font-weight:700;">PubMed / 원문 바로가기 ↗</a>' : '') +
           '</div>';
         }).join('');
@@ -4005,8 +4004,8 @@
             '</div>' +
           '</div>' +
           '<div style="display:flex; gap:8px; align-items:center;">' +
-            '<button class="btn-cmp' + (isCmp ? ' active' : '') + '" type="button" onclick="toggleIvdCompare('' + safeId + ''); openIvdDetailModal('' + safeId + '');">' + (isCmp ? '✓ 비교함 담김' : '+ 비교담기') + '</button>' +
-            '<button class="btn" type="button" onclick="closeModalById('ivdDetailModal')">닫기</button>' +
+            '<button class="btn-cmp' + (isCmp ? ' active' : '') + '" type="button" onclick="toggleIvdCompare(\'' + safeId + '\'); openIvdDetailModal(\'' + safeId + '\');">' + (isCmp ? '✓ 비교함 담김' : '+ 비교담기') + '</button>' +
+            '<button class="btn" type="button" onclick="closeModalById(\'ivdDetailModal\')">닫기</button>' +
           '</div>' +
         '</div>' +
         '<div class="ivd-gauges" style="margin-bottom:14px;">' +
@@ -4079,13 +4078,13 @@
         buildRow('도입 시 주요 강점', function(d) { return '<span style="color:#065f46;">' + esc(d.pros) + '</span>'; }),
         buildRow('도입 전 체크포인트', function(d) { return '<span style="color:#92400e;">' + esc(d.cons_check) + '</span>'; }),
         buildRow('하단 Reference 요약', function(d) {
-          var safeId = esc(d.device_id).replace(/'/g, "\'");
+          var safeId = esc(d.device_id).replace(/'/g, "\\'");
           var cTags = (d.clsi_refs || []).map(function(c) { return esc(c.code); }).join(', ');
           var e2Txt = (d.e2_alerts && d.e2_alerts.length) ? ('<div style="color:#991b1b; font-weight:800;">⚠️ E2 주의보 ' + d.e2_alerts.length + '건</div>') : '';
           return '<div><strong>표준:</strong> ' + (cTags || '-') + '</div>' +
                  '<div><strong>평가 논문:</strong> ' + (d.total_matched_papers || 0) + '편</div>' +
                  e2Txt +
-                 '<button class="btn" type="button" style="margin-top:6px; padding:4px 9px; font-size:0.75rem;" onclick="closeModalById('ivdCompareModal'); openIvdDetailModal('' + safeId + '');">개별 논문·원문 보기 ↗</button>';
+                 '<button class="btn" type="button" style="margin-top:6px; padding:4px 9px; font-size:0.75rem;" onclick="closeModalById(\'ivdCompareModal\'); openIvdDetailModal(\'' + safeId + '\');">개별 논문·원문 보기 ↗</button>';
         })
       ];
 
@@ -4095,7 +4094,7 @@
             '<h3 class="section-title">⚖️ 검사장비 · 시약 나란히 스펙 비교 (' + devs.length + '종)</h3>' +
             '<div class="section-sub">제조사 공식 사양서(IFU) 기준 핵심 항목 및 상대 지표 대조표</div>' +
           '</div>' +
-          '<button class="btn" type="button" onclick="closeModalById('ivdCompareModal')">닫기</button>' +
+          '<button class="btn" type="button" onclick="closeModalById(\'ivdCompareModal\')">닫기</button>' +
         '</div>' +
         '<div style="overflow-x:auto;">' +
           '<table class="cmp-table">' +
