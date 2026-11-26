@@ -32,7 +32,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 import requests
 
-CODE_VERSION = "v8.5.1"
+CODE_VERSION = "v8.6.0"
 KST = datetime.timezone(datetime.timedelta(hours=9))
 
 SHEET_ITEMS = "items"
@@ -41,6 +41,7 @@ SHEET_CONFIG = "config"
 SHEET_KDCA_SURV = "kdca_surveillance"
 SHEET_HAI_STATS = "hai_stats"
 SHEET_IVD = "ivd_catalog"
+SHEET_IVD_PANELS = "ivd_panels"
 SHEET_PILOT = "pilot_v82"
 SHEET_DRYRUN = "dryrun_v83"
 TREND_CONFIG_KEY = "paper_macro_trend_v843"
@@ -300,7 +301,7 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 OUTPUT_JSON_PATH = ROOT_DIR / "docs" / "data" / "dashboard.json"
 
 HTTP = requests.Session()
-HTTP.headers.update({"User-Agent": "ClinicalMicroBriefing/8.5.1 (Academic Surveillance Bot)"})
+HTTP.headers.update({"User-Agent": "ClinicalMicroBriefing/8.6.0 (Academic Surveillance Bot)"})
 
 
 def now_kst() -> datetime.datetime:
@@ -3495,14 +3496,84 @@ def _map_ivd_rating(metric_key: str, raw_val: str) -> Dict[str, Any]:
     }
 
 
+CLSI_VERIFICATION_GUIDE_MAP: Dict[str, str] = {
+    "CLSI M47": "혈액배양 채혈량(성인 20~30mL/세트)·오염률(<3%) 지표 및 양성 검출시간(TTP) 모니터링 기준 수립",
+    "CLSI M52": "상용 동정·AST 시스템 도입 검증(Verification): 표준균주(ATCC) 및 임상 분리주 ≥30주 병행 평가로 범주일치도(CA ≥90%)·VME/ME 확인",
+    "CLSI M58": "MALDI-TOF MS 동정 검증: 주요 세균·효모균·사상균 임상 분리주 동정 일치율, 스코어 기준 및 전처리 프로토콜 검증",
+    "CLSI M67": "배양 자동화(TLA) 검증: 수동 접종·판독 대비 단일집락 분리율, 배양시간 단축 및 디지털 판독 민감도·특이도 검증",
+    "CLSI M100": "현행 최신판(M100-Ed36) 브레이크포인트 적용 여부 및 ATCC 정도관리(QC) 균주 허용 범위 확인",
+    "CLSI M07": "표준 액체배지미량희석법(BMD) 대조 평가 및 ATCC QC 균주 MIC 허용 범위 확인",
+    "CLSI M27": "효모균(Candida 등) 항진균제 감수성 판정표(M27M44S-Ed4) 및 QC 균주 허용 범위 검증",
+    "CLSI M24": "결핵균·비결핵항산균(NTM) 약제감수성 기준(M24S) 및 배양 기간별 QC 기준 적용",
+    "CLSI M48": "항산균 전처리·도말·배양 오염률(3~5% 이하) 관리 및 생물안전(BSC) 수칙 점검",
+    "CLSI M11": "혐기성 세균 무산소 배양·감수성 검사 및 ATCC 혐기 QC 균주 허용 범위 검증",
+    "CLSI M50": "상용 동정·신속면역 시스템의 간소화(Streamlined) QC 및 로트 변경 시 검증 절차 수립",
+    "CLSI M22": "상용 배양배지 성능 검증(Exempt 대상 확인 및 선택배지 QC) 기준 적용",
+    "CLSI MM03": "분자진단 구역 분리(시약조제·추출·증폭 공간 구분) 및 PCR 교차오염 방지·내부대조(IC) 판독 기준 수립",
+    "CLSI MM13": "분자진단 검체 채취·수송·보관 조건 및 핵산 분해·억제제 방지 절차 검증",
+    "CLSI MM06": "정량 분자진단 검증(MM06-Ed3): 검출한계(LoD), 정량한계(LoQ), 직선성(Linearity) 및 국제표준물질 일치도 검증",
+    "CLSI MM17": "다중(Multiplex) PCR 패널 검증: 표적별 양성/음성 일치율(PPA/NPA), 교차반응 배제 및 동시감염 판독 기준 검증",
+    "CLSI MM19": "검사실 분자진단 운영 체계: 검사자 역량 평가, 음성대조 오염 모니터링 및 외부정도관리(EQA/PT) 등록",
+    "CLSI MM24": "균주 형별(Typing) 검증: 배지·배양시간 표준화 및 원내 유행 기준 균주(Reference cluster) 재현성 확인",
+}
+
+
+def _build_device_verification_checklist(
+    clsi_list: List[Dict[str, Any]],
+    reg_reimb: str,
+    qc_storage: str,
+    footprint_lis: str,
+    cons_check: str,
+) -> Dict[str, Any]:
+    std_checks: List[Dict[str, str]] = []
+    for c in clsi_list:
+        code = safe_str(c.get("code"))
+        desc = CLSI_VERIFICATION_GUIDE_MAP.get(code.upper()) or safe_str(c.get("titleKo"))
+        std_checks.append({
+            "code": code,
+            "requirement": desc,
+            "url": safe_str(c.get("url")),
+        })
+
+    is_unapproved = any(k in reg_reimb for k in ("미출시", "FDA 승인", "RUO", "연구용", "도입 현황 확인"))
+    infra_checks = [
+        {
+            "label": "인허가 · 보험수가 확인",
+            "detail": reg_reimb + (" — 도입 전 국내 식약처 품목허가 및 건강보험 급여/선별급여 고시 필수 확인" if is_unapproved else ""),
+            "alert": is_unapproved,
+        },
+        {
+            "label": "정도관리(QC) · 시약 보관",
+            "detail": qc_storage or "제조사 IFU 기준 내부정도관리 및 보관 온도 준수",
+            "alert": False,
+        },
+        {
+            "label": "설치 공간 · 전산(LIS) 연동",
+            "detail": footprint_lis or "장비 설치 면적·전원·LIS 양방향 인터페이스 사전 점검",
+            "alert": False,
+        },
+    ]
+    if cons_check:
+        infra_checks.append({
+            "label": "도입 전 실무 체크포인트",
+            "detail": cons_check,
+            "alert": False,
+        })
+    return {
+        "standardChecks": std_checks,
+        "infraChecks": infra_checks,
+    }
+
+
 def build_ivd_catalog_payload(
     ivd_rows: List[Dict[str, Any]],
     items: List[Dict[str, Any]],
     reference_standards: Dict[str, Any],
+    ivd_panel_rows: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """
-    [AI 비용 0원] ivd_catalog 시트 데이터를 정제하고,
-    items DB의 학술 평가 논문·E2 주의보 및 referenceStandards(CLSI)를 자동 매칭함.
+    [AI 비용 0원] ivd_catalog(장비) + ivd_panels(전용·호환 시약/패널) 2단 계층화,
+    검사실 도입·검증 체크리스트 자동 매칭, 학술 평가 논문·E2 주의보 자동 연결.
     """
     std_lookup: Dict[str, Dict[str, Any]] = {}
     for grp_key in ("clsi_m", "clsi_mm", "eucast"):
@@ -3516,6 +3587,29 @@ def build_ivd_catalog_payload(
                     "status": safe_str(st.get("status")),
                     "url": safe_str(st.get("url")),
                 }
+
+    panels_by_device: Dict[str, List[Dict[str, Any]]] = {}
+    total_panels = 0
+    for pr in (ivd_panel_rows or []):
+        pid = safe_str(pr.get("panel_id"))
+        did = safe_str(pr.get("device_id"))
+        pname = safe_str(pr.get("panel_name"))
+        if not pid or not did or not pname:
+            continue
+        pstatus = safe_str(pr.get("status")).lower() or "active"
+        if pstatus not in ("active", "sponsor", "featured"):
+            continue
+        panels_by_device.setdefault(did, []).append({
+            "panel_id": pid,
+            "panel_name": pname,
+            "manufacturer": safe_str(pr.get("manufacturer")),
+            "target_summary": safe_str(pr.get("target_summary")),
+            "specimen_type": safe_str(pr.get("specimen_type")),
+            "tat": safe_str(pr.get("tat")),
+            "reg_reimb_kr": safe_str(pr.get("reg_reimb_kr")),
+            "note": safe_str(pr.get("note")),
+        })
+        total_panels += 1
 
     searchable_items = [
         it for it in items
@@ -3543,7 +3637,6 @@ def build_ivd_catalog_payload(
         for tg in wf_tags:
             tag_counts[tg] = tag_counts.get(tg, 0) + 1
 
-        # Match CLSI standards
         clsi_list: List[Dict[str, Any]] = []
         for raw_c in safe_str(r.get("clsi_refs")).split("|"):
             c_clean = raw_c.strip()
@@ -3561,7 +3654,6 @@ def build_ivd_catalog_payload(
                     "url": "https://clsi.org/standards/",
                 })
 
-        # Match academic papers & E2 alerts from items DB
         pat_str = safe_str(r.get("paper_match_regex"))
         matched_papers: List[Dict[str, Any]] = []
         e2_alerts: List[Dict[str, Any]] = []
@@ -3604,6 +3696,11 @@ def build_ivd_catalog_payload(
 
         img_file = safe_str(r.get("image_file"))
         img_url = f"./images/devices/{img_file}" if img_file else ""
+        reg_reimb = safe_str(r.get("reg_reimb"))
+        qc_storage = safe_str(r.get("qc_storage"))
+        footprint_lis = safe_str(r.get("footprint_lis"))
+        cons_check = safe_str(r.get("cons_check"))
+        dev_panels = panels_by_device.get(did, [])
 
         devices.append({
             "device_id": did,
@@ -3615,17 +3712,21 @@ def build_ivd_catalog_payload(
             "cost_running": _map_ivd_rating("cost_running", r.get("cost_running", "중")),
             "ease_of_use": _map_ivd_rating("ease_of_use", r.get("ease_of_use", "중")),
             "workflow_tags": wf_tags,
-            "reg_reimb": safe_str(r.get("reg_reimb")),
+            "reg_reimb": reg_reimb,
             "method_principle": safe_str(r.get("method_principle")),
             "test_menu": safe_str(r.get("test_menu")),
             "specimen_volume": safe_str(r.get("specimen_volume")),
             "tat_hands_on": safe_str(r.get("tat_hands_on")),
             "throughput_mode": safe_str(r.get("throughput_mode")),
             "performance_summary": safe_str(r.get("performance_summary")),
-            "qc_storage": safe_str(r.get("qc_storage")),
-            "footprint_lis": safe_str(r.get("footprint_lis")),
+            "qc_storage": qc_storage,
+            "footprint_lis": footprint_lis,
             "pros": safe_str(r.get("pros")),
-            "cons_check": safe_str(r.get("cons_check")),
+            "cons_check": cons_check,
+            "panels": dev_panels,
+            "verification_checklist": _build_device_verification_checklist(
+                clsi_list, reg_reimb, qc_storage, footprint_lis, cons_check
+            ),
             "clsi_refs": clsi_list,
             "e2_alerts": e2_alerts,
             "matched_papers": matched_papers[:8],
@@ -3639,11 +3740,11 @@ def build_ivd_catalog_payload(
     sorted_tags = sorted(tag_counts.items(), key=lambda x: (-x[1], x[0]))
     return {
         "totalDevices": len(devices),
+        "totalPanels": total_panels,
         "categories": categories_ordered,
         "workflowTags": [{"tag": k, "count": v} for k, v in sorted_tags],
         "devices": devices,
     }
-
 
 def write_dashboard_json(
     item_rows: List[Dict[str, Any]],
@@ -3654,6 +3755,7 @@ def write_dashboard_json(
     run_live_standards_probe: bool = False,
     precomputed_live: Optional[Tuple[Dict[str, Any], List[Dict[str, Any]], List[Dict[str, Any]], str]] = None,
     ivd_rows: Optional[List[Dict[str, Any]]] = None,
+    ivd_panel_rows: Optional[List[Dict[str, Any]]] = None,
 ) -> str:
     items = []
     for r in item_rows:
@@ -3754,7 +3856,7 @@ def write_dashboard_json(
     payload["referenceStandards"] = rs_live
     payload["notifiableDiseases"] = noti_live
     payload["kdcaGuidelineReleases"] = kdca_rel_live
-    payload["ivdCatalog"] = build_ivd_catalog_payload(ivd_rows or [], items, rs_live)
+    payload["ivdCatalog"] = build_ivd_catalog_payload(ivd_rows or [], items, rs_live, ivd_panel_rows=ivd_panel_rows)
 
     OUTPUT_JSON_PATH.parent.mkdir(parents=True, exist_ok=True)
     OUTPUT_JSON_PATH.write_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
@@ -3787,7 +3889,16 @@ def sync_sheet_to_dashboard_json(ss, run_live_standards_probe: bool = True) -> s
         ivd = read_sheet_as_dicts(ss, SHEET_IVD)
     except Exception:
         ivd = []
-    return write_dashboard_json(items, surv, hai, logs, cfg_map, run_live_standards_probe=run_live_standards_probe, ivd_rows=ivd)
+    try:
+        ivd_panels = read_sheet_as_dicts(ss, SHEET_IVD_PANELS)
+    except Exception:
+        ivd_panels = []
+    return write_dashboard_json(
+        items, surv, hai, logs, cfg_map,
+        run_live_standards_probe=run_live_standards_probe,
+        ivd_rows=ivd,
+        ivd_panel_rows=ivd_panels,
+    )
 
 
 # =====================================================================
@@ -3992,11 +4103,16 @@ def mode_test_apis(allow_h1: bool = False) -> None:
         ivd_all = read_sheet_as_dicts(ss, SHEET_IVD)
     except Exception:
         ivd_all = []
+    try:
+        ivd_panels_all = read_sheet_as_dicts(ss, SHEET_IVD_PANELS)
+    except Exception:
+        ivd_panels_all = []
     write_dashboard_json(
         items_all, surv_all, hai_all, logs_all, cfg_map,
         run_live_standards_probe=False,
         precomputed_live=(rs_live, noti_live, kdca_rel_live, live_std_msg),
         ivd_rows=ivd_all,
+        ivd_panel_rows=ivd_panels_all,
     )
 
 
@@ -4818,6 +4934,7 @@ def mode_build_from_csv(csv_dir: Path) -> None:
     hai = load_csv("임상미생물_정보_수집_DB_MVP_JCM_hai_stats.csv")
     logs = load_csv("임상미생물_정보_수집_DB_MVP_JCM_run_logs.csv")
     ivd = load_csv("임상미생물_정보_수집_DB_MVP_JCM_ivd_catalog.csv")
+    ivd_panels = load_csv("임상미생물_정보_수집_DB_MVP_JCM_ivd_panels.csv")
     cfg_rows = load_csv("임상미생물_정보_수집_DB_MVP_JCM_config.csv")
     cfg_map = {safe_str(r.get("key")): safe_str(r.get("value")) for r in cfg_rows if safe_str(r.get("key"))}
     cfg_map.setdefault("gemini_model_fallback", "gemini-3.6-flash")
@@ -4826,7 +4943,7 @@ def mode_build_from_csv(csv_dir: Path) -> None:
     cfg_map.setdefault("cutoff_must_read", "85")
     cfg_map.setdefault("cutoff_high", "70")
     cfg_map.setdefault("cutoff_medium", "45")
-    write_dashboard_json(items, surv, hai, logs, cfg_map, ivd_rows=ivd)
+    write_dashboard_json(items, surv, hai, logs, cfg_map, ivd_rows=ivd, ivd_panel_rows=ivd_panels)
 
 
 def mode_sync_sheet_only() -> None:
