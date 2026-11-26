@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="robots" content="noindex, nofollow" />
-  <title>임상미생물 주간 브리핑 v8.5.1</title>
+  <title>임상미생물 주간 브리핑 v8.6.0</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
   <style>
     :root {
@@ -1047,17 +1047,17 @@
       color: var(--text-light);
     }
 
-    /* Tab 5: IVD Devices & Reagents (Nosearch-Style Comparison Hub) */
+    /* Tab 5: IVD Devices & Reagents (v8.6.0 Grouped Compact Hub + 2-Tier Panels + Checklist) */
     .ivd-notice-bar {
       background: #f8fafc;
       border: 1px solid #cbd5e1;
       border-left: 4px solid #0284c7;
       border-radius: 10px;
-      padding: 11px 14px;
+      padding: 10px 14px;
       margin-bottom: 14px;
-      font-size: 0.8rem;
+      font-size: 0.79rem;
       color: #334155;
-      line-height: 1.55;
+      line-height: 1.52;
     }
     .ivd-notice-head {
       display: flex;
@@ -1067,12 +1067,12 @@
       flex-wrap: wrap;
       font-weight: 800;
       color: #0f172a;
-      margin-bottom: 4px;
+      margin-bottom: 3px;
     }
     .ivd-guide-panel {
       display: none;
-      margin-top: 10px;
-      padding-top: 10px;
+      margin-top: 9px;
+      padding-top: 9px;
       border-top: 1px dashed #cbd5e1;
     }
     .ivd-guide-panel.show { display: block; }
@@ -1085,11 +1085,11 @@
       background: #ffffff;
       border: 1px solid #e2e8f0;
       border-radius: 9px;
-      padding: 10px 12px;
-      font-size: 0.78rem;
+      padding: 9px 11px;
+      font-size: 0.77rem;
       line-height: 1.5;
     }
-    .ivd-guide-card strong { display: block; margin-bottom: 4px; font-size: 0.82rem; color: #0f172a; }
+    .ivd-guide-card strong { display: block; margin-bottom: 4px; font-size: 0.81rem; color: #0f172a; }
     .ivd-cat-bar {
       display: flex;
       flex-wrap: wrap;
@@ -1102,7 +1102,7 @@
       color: #334155;
       border-radius: 999px;
       padding: 6px 12px;
-      font-size: 0.8rem;
+      font-size: 0.79rem;
       font-weight: 700;
       cursor: pointer;
       transition: all 0.14s;
@@ -1113,64 +1113,89 @@
       border-color: #0f172a;
       color: #ffffff;
     }
-    .ivd-wf-bar {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-      align-items: center;
-      margin-bottom: 12px;
-    }
-    .ivd-wf-chip {
-      background: #ffffff;
-      border: 1px solid #cbd5e1;
-      color: #475569;
-      border-radius: 8px;
-      padding: 4px 10px;
-      font-size: 0.76rem;
-      font-weight: 700;
-      cursor: pointer;
-    }
-    .ivd-wf-chip:hover { border-color: #2563eb; color: #1d4ed8; }
-    .ivd-wf-chip.active {
-      background: #eff6ff;
-      border-color: #2563eb;
-      color: #1d4ed8;
-    }
-    .ivd-grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 14px;
-    }
-    .ivd-card {
+    /* Distinct Category Group Sections */
+    .ivd-group-section {
       background: #ffffff;
       border: 1.5px solid #cbd5e1;
-      border-radius: 13px;
-      padding: 15px 16px;
+      border-radius: 14px;
+      margin-bottom: 18px;
+      overflow: hidden;
+      box-shadow: 0 2px 10px rgba(15, 23, 42, 0.04);
+    }
+    .ivd-group-head {
+      padding: 11px 16px;
       display: flex;
-      flex-direction: column;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      border-bottom: 1px solid #e2e8f0;
+      background: #f8fafc;
+    }
+    .ivd-group-title-wrap {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      flex-wrap: wrap;
+    }
+    .ivd-group-badge {
+      color: #ffffff;
+      font-size: 0.72rem;
+      font-weight: 800;
+      padding: 3px 9px;
+      border-radius: 6px;
+      letter-spacing: 0.02em;
+    }
+    .ivd-group-title {
+      font-size: 1.01rem;
+      font-weight: 800;
+      color: #0f172a;
+      margin: 0;
+    }
+    .ivd-group-count {
+      font-size: 0.76rem;
+      font-weight: 800;
+      color: #475569;
+      background: #ffffff;
+      border: 1px solid #cbd5e1;
+      padding: 2px 9px;
+      border-radius: 999px;
+    }
+    /* Compact 3-Column Grid: Photo + Name + 1-Line Description ONLY */
+    .ivd-compact-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 11px;
-      box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
-      transition: border-color 0.15s, box-shadow 0.15s;
+      padding: 14px 16px;
+      background: #ffffff;
     }
-    .ivd-card:hover {
-      border-color: #64748b;
-      box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
-    }
-    .ivd-card.is-compared {
-      border-color: #2563eb;
-      background: #fcfdff;
-      box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
-    }
-    .ivd-card-top {
+    .ivd-mini-card {
+      background: #ffffff;
+      border: 1.5px solid #e2e8f0;
+      border-radius: 11px;
+      padding: 11px 12px;
       display: flex;
-      gap: 12px;
-      align-items: flex-start;
+      align-items: center;
+      gap: 11px;
+      cursor: pointer;
+      transition: border-color 0.14s, box-shadow 0.14s, transform 0.12s;
+      position: relative;
+    }
+    .ivd-mini-card:hover {
+      border-color: #2563eb;
+      box-shadow: 0 4px 14px rgba(37, 99, 235, 0.1);
+      transform: translateY(-1px);
+    }
+    .ivd-mini-card.is-compared {
+      border-color: #2563eb;
+      background: #f8fbff;
+      box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.16);
     }
     .ivd-thumb {
-      width: 74px;
-      height: 74px;
-      border-radius: 11px;
-      border: 1px solid #dbeafe;
+      width: 58px;
+      height: 58px;
+      border-radius: 10px;
+      border: 1px solid #e2e8f0;
       background: linear-gradient(135deg, #f8fafc 0%, #eff6ff 100%);
       display: flex;
       flex-direction: column;
@@ -1178,55 +1203,78 @@
       justify-content: center;
       flex-shrink: 0;
       overflow: hidden;
-      position: relative;
     }
     .ivd-thumb img {
       width: 100%;
       height: 100%;
       object-fit: contain;
-      padding: 4px;
+      padding: 3px;
       background: #ffffff;
     }
     .ivd-thumb-cap {
-      font-size: 0.61rem;
+      font-size: 0.58rem;
       font-weight: 800;
-      color: #475569;
-      margin-top: 2px;
+      margin-top: 1px;
       letter-spacing: -0.02em;
     }
-    .ivd-head-info { flex: 1; min-width: 0; }
-    .ivd-badges {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 5px;
-      align-items: center;
-      margin-bottom: 5px;
+    .ivd-mini-info {
+      flex: 1;
+      min-width: 0;
     }
-    .ivd-name {
-      font-size: 1.02rem;
+    .ivd-mini-mfr {
+      font-size: 0.71rem;
+      font-weight: 700;
+      color: #64748b;
+      margin-bottom: 1px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .ivd-mini-name {
+      font-size: 0.93rem;
       font-weight: 800;
       color: #0f172a;
-      margin: 0 0 4px;
-      line-height: 1.3;
+      margin: 0 0 3px;
+      line-height: 1.28;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
-    .ivd-hl-tag {
-      display: inline-block;
-      background: #f0fdfa;
+    .ivd-mini-oneliner {
+      font-size: 0.78rem;
+      font-weight: 600;
       color: #0f766e;
-      border: 1px solid #99f6e4;
-      font-size: 0.76rem;
-      font-weight: 800;
-      padding: 2px 9px;
-      border-radius: 6px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
+    .btn-cmp-mini {
+      background: #f8fafc;
+      border: 1px solid #cbd5e1;
+      color: #475569;
+      border-radius: 7px;
+      padding: 4px 7px;
+      font-size: 0.71rem;
+      font-weight: 800;
+      cursor: pointer;
+      flex-shrink: 0;
+      align-self: flex-start;
+    }
+    .btn-cmp-mini:hover { border-color: #2563eb; color: #1d4ed8; background: #eff6ff; }
+    .btn-cmp-mini.active {
+      background: #2563eb;
+      border-color: #2563eb;
+      color: #ffffff;
+    }
+    /* Detail Modal Gauges, 2-Tier Panels Table & Verification Checklist */
     .ivd-gauges {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 7px;
+      gap: 8px;
       background: #f8fafc;
       border: 1px solid #e2e8f0;
       border-radius: 10px;
-      padding: 9px 10px;
+      padding: 10px 12px;
     }
     .ivd-g-item {
       display: flex;
@@ -1237,15 +1285,15 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      font-size: 0.72rem;
+      font-size: 0.74rem;
       color: #475569;
       font-weight: 700;
     }
     .ivd-g-grade {
       font-weight: 800;
-      padding: 0 5px;
+      padding: 0 6px;
       border-radius: 4px;
-      font-size: 0.7rem;
+      font-size: 0.72rem;
     }
     .g-navy .ivd-g-grade { background: #dbeafe; color: #1e40af; }
     .g-amber .ivd-g-grade { background: #fef3c7; color: #b45309; }
@@ -1264,49 +1312,19 @@
     .g-amber .ivd-bar-seg.on { background: #d97706; }
     .g-teal .ivd-bar-seg.on { background: #059669; }
     .ivd-g-desc {
-      font-size: 0.73rem;
+      font-size: 0.75rem;
       font-weight: 800;
       color: #1e293b;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
     }
-    .ivd-core-specs {
-      display: flex;
-      flex-direction: column;
-      gap: 5px;
-      font-size: 0.81rem;
-      color: #334155;
-      background: #ffffff;
-      border-top: 1px dashed #e2e8f0;
-      padding-top: 9px;
-    }
-    .ivd-spec-line {
-      display: flex;
-      gap: 7px;
-      align-items: baseline;
-    }
-    .ivd-spec-k {
-      font-size: 0.73rem;
+    .ivd-hl-tag {
+      display: inline-block;
+      background: #f0fdfa;
+      color: #0f766e;
+      border: 1px solid #99f6e4;
+      font-size: 0.76rem;
       font-weight: 800;
-      color: #64748b;
-      min-width: 68px;
-      flex-shrink: 0;
-    }
-    .ivd-spec-v {
-      flex: 1;
-      min-width: 0;
-      word-break: keep-all;
-    }
-    .ivd-card-foot {
-      margin-top: auto;
-      padding-top: 9px;
-      border-top: 1px solid #f1f5f9;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 8px;
-      flex-wrap: wrap;
+      padding: 2px 9px;
+      border-radius: 6px;
     }
     .btn-primary-sm {
       background: #1d4ed8;
@@ -1385,7 +1403,7 @@
     }
     /* Modals for Device Detail & Side-by-Side Comparison */
     .modal-wide {
-      max-width: 1040px;
+      max-width: 1060px;
       width: 100%;
     }
     .ifu-table {
@@ -1396,7 +1414,7 @@
     }
     .ifu-table th, .ifu-table td {
       border: 1px solid #e2e8f0;
-      padding: 9px 11px;
+      padding: 8px 11px;
       text-align: left;
       vertical-align: top;
       line-height: 1.5;
@@ -1405,7 +1423,62 @@
       background: #f8fafc;
       color: #334155;
       font-weight: 800;
-      width: 175px;
+      width: 170px;
+    }
+    .panel-tier-box {
+      border: 1px solid #bae6fd;
+      border-top: 3px solid #0284c7;
+      border-radius: 10px;
+      background: #f8fcff;
+      padding: 12px 14px;
+      margin-bottom: 14px;
+    }
+    .panel-tier-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8rem;
+      background: #ffffff;
+      margin-top: 8px;
+    }
+    .panel-tier-table th, .panel-tier-table td {
+      border: 1px solid #dbeafe;
+      padding: 7px 9px;
+      text-align: left;
+      vertical-align: top;
+      line-height: 1.45;
+    }
+    .panel-tier-table th {
+      background: #eff6ff;
+      color: #1e3a8a;
+      font-weight: 800;
+    }
+    .chk-tier-box {
+      border: 1px solid #bbf7d0;
+      border-top: 3px solid #059669;
+      border-radius: 10px;
+      background: #f7fdf9;
+      padding: 12px 14px;
+      margin-bottom: 14px;
+    }
+    .chk-list {
+      list-style: none;
+      margin: 8px 0 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 0.81rem;
+    }
+    .chk-list li {
+      background: #ffffff;
+      border: 1px solid #d1fae5;
+      border-radius: 7px;
+      padding: 7px 10px;
+      line-height: 1.48;
+    }
+    .chk-list li.is-warn {
+      background: #fffbeb;
+      border-color: #fde68a;
     }
     .cmp-table {
       width: 100%;
@@ -1434,7 +1507,7 @@
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 10px;
-      margin-bottom: 16px;
+      margin-bottom: 14px;
     }
     .ivd-box-pros {
       background: #ecfdf5;
@@ -1442,7 +1515,7 @@
       border-left: 4px solid #059669;
       border-radius: 9px;
       padding: 10px 12px;
-      font-size: 0.83rem;
+      font-size: 0.82rem;
       color: #064e3b;
     }
     .ivd-box-cons {
@@ -1451,7 +1524,7 @@
       border-left: 4px solid #d97706;
       border-radius: 9px;
       padding: 10px 12px;
-      font-size: 0.83rem;
+      font-size: 0.82rem;
       color: #78350f;
     }
     .ivd-ref-section {
@@ -1522,7 +1595,7 @@
       .hai-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     }
     @media (max-width: 820px) {
-      .ivd-grid, .ivd-guide-grid, .ivd-pros-cons, .std-grid, .macro-grid { grid-template-columns: 1fr; }
+      .ivd-compact-grid, .ivd-guide-grid, .ivd-pros-cons, .std-grid, .macro-grid { grid-template-columns: 1fr; }
       .hai-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .chart-wrap { height: 290px; }
       .brand-title { font-size: 1.04rem; }
@@ -1541,7 +1614,7 @@
     <div class="topbar-inner">
       <div class="brand-row">
         <div>
-          <div class="brand-title">임상미생물 주간 브리핑 <span class="ver-pill">v8.5.1</span></div>
+          <div class="brand-title">임상미생물 주간 브리핑 <span class="ver-pill">v8.6.0</span></div>
           <div class="brand-sub" id="brandSub">GitHub Pages 메인 대시보드 · 데이터 불러오는 중...</div>
         </div>
         <div class="meta-actions">
@@ -1981,48 +2054,46 @@
       </div>
     </section>
 
-    <!-- ==================== 탭 5: 검사장비·시약 (노써치 스타일 장비·시약 비교관) ==================== -->
+    <!-- ==================== 탭 5: 검사장비·시약 (8대 분류 구획화 · 초간결 카드 + 2단 시약/체크리스트) ==================== -->
     <section id="tab-devices" class="tab-pane">
-      <!-- 상단 안내 및 유의사항 + 상·중·하 지표 산정 기준 안내 -->
       <div class="ivd-notice-bar">
         <div class="ivd-notice-head">
           <span>ℹ️ 안내 및 유의사항 (제조사 공개 사양서 IFU · 공개 학술 문헌 기반 도입 검토 참고 자료)</span>
-          <button class="btn" id="btnToggleIvdGuide" type="button" style="padding:4px 10px; font-size:0.76rem;">ⓘ 상·중·하 지표 산정 기준 보기</button>
+          <button class="btn" id="btnToggleIvdGuide" type="button" style="padding:4px 10px; font-size:0.75rem;">ⓘ 상·중·하 지표 산정 기준</button>
         </div>
         <div>
-          본 페이지의 장비·시약 정보는 제조사 공개 사양서(IFU·브로슈어) 및 공개 학술 문헌을 바탕으로 검사실 도입 검토 참고용으로 정리한 정보입니다.
-          실제 도입가와 건당 단가는 계약 방식(구매·시약 임대), 검사량, 유지보수 조건에 따라 달라지며, 국내 식약처 품목허가·건강보험 수가 및 최신 사양은 반드시 제조사·수입사 공식 문서와 식약처·심평원 공고를 확인하십시오.
-          <span style="color:#475569;">(추후 제조사 공식 제공·후원 콘텐츠가 포함될 경우 별도 표기로 명확히 구분합니다.)</span>
+          본 페이지의 장비·시약 정보는 제조사 공개 사양서(IFU) 및 공개 학술 문헌을 바탕으로 검사실 도입 검토 참고용으로 정리한 정보입니다.
+          국내 식약처 품목허가·건강보험 수가 및 최신 사양은 반드시 제조사·수입사 공식 문서와 식약처·심평원 공고를 확인하십시오.
         </div>
         <div class="ivd-guide-panel" id="ivdGuidePanel">
           <div class="ivd-guide-grid">
             <div class="ivd-guide-card">
               <strong>1. 도입 규모 (장비 체급 · 초기 투자)</strong>
-              <div><span class="badge b-domestic">상 · 대형·고가 투자</span> 대형 거치형·질량분석·전자동 TLA 라인</div>
-              <div><span class="badge b-medium">중 · 중형·모듈형</span> 중형 벤치탑·모듈 확장형 시스템</div>
-              <div><span class="badge b-oa">하 · 소형·도입부담 낮음</span> 소형 탁상형·현장 POCT·단독 추출/증폭기</div>
+              <div><span class="badge b-domestic">상 · 대형·고가</span> 대형 거치형·질량분석·TLA 라인</div>
+              <div><span class="badge b-medium">중 · 중형·모듈</span> 중형 벤치탑·모듈 확장형</div>
+              <div><span class="badge b-oa">하 · 소형·부담낮음</span> 소형 탁상형·현장 POCT</div>
             </div>
             <div class="ivd-guide-card">
-              <strong>2. 시약 단가 구조 (건당 소모품 구조)</strong>
-              <div><span class="badge b-high">상 · 고가·일체형 카트리지</span> 일체형 다중 파우치·카트리지·신속 AST 패널</div>
-              <div><span class="badge b-medium">중 · 중가·전용 패널/카드</span> 전용 AST 카드·배양병·통합 폐쇄형 시약</div>
-              <div><span class="badge b-oa">하 · 저가·범용/개방형</span> MALDI 매트릭스·개방형 시약·범용 소모품</div>
+              <strong>2. 시약 단가 구조 (건당 소모품)</strong>
+              <div><span class="badge b-high">상 · 고가 카트리지</span> 일체형 다중 파우치·신속 AST</div>
+              <div><span class="badge b-medium">중 · 전용 패널/카드</span> 전용 AST 카드·배양병·통합 시약</div>
+              <div><span class="badge b-oa">하 · 범용/개방형</span> MALDI 매트릭스·개방형·범용 소모품</div>
             </div>
             <div class="ivd-guide-card">
               <strong>3. 자동화 · 편의성 (워크플로우)</strong>
               <div><span class="badge b-oa">상 · 전자동·원터치</span> 원관/카트리지 직접 투입·자동 판독</div>
-              <div><span class="badge b-medium">중 · 반자동·일부 전처리</span> 수동 로딩·전처리 일부 병행</div>
-              <div><span class="badge b-low">하 · 수작업·분리 운용</span> 추출·분주·배양·판독 단계 분리</div>
+              <div><span class="badge b-medium">중 · 반자동·전처리</span> 수동 로딩·전처리 일부 병행</div>
+              <div><span class="badge b-low">하 · 수작업·분리</span> 추출·분주·배양·판독 단계 분리</div>
             </div>
           </div>
         </div>
       </div>
 
-      <div class="card">
-        <div class="section-head">
+      <div class="card" style="padding-bottom:12px;">
+        <div class="section-head" style="margin-bottom:10px;">
           <div>
-            <h2 class="section-title">🔬 임상미생물 검사장비 · 시약 비교관 (8대 분류 · IFU 스펙 &amp; 학술 Reference)</h2>
-            <div class="section-sub">분류별 주요 장비를 한눈에 비교하고, [+ 비교담기]로 최대 3종을 나란히 대조하세요. 각 장비 상세 맨 아래에 평가 논문·E2 주의보·CLSI 표준이 자동 연결됩니다.</div>
+            <h2 class="section-title">🔬 임상미생물 검사장비 · 시약 카탈로그 (8대 분류 · 클릭 시 상세 스펙·탑재 시약·체크리스트)</h2>
+            <div class="section-sub">장비 카드를 클릭하면 IFU 상세 스펙, 탑재 시약/패널 목록, 검사실 도입·검증 체크리스트 및 학술 Reference가 열립니다.</div>
           </div>
           <span class="section-sub" id="ivdFilterMeta"></span>
         </div>
@@ -2030,30 +2101,26 @@
         <!-- 8대 대분류 필터 바 -->
         <div class="ivd-cat-bar" id="ivdCategoryBar"></div>
 
-        <!-- 맞춤 조건 태그 칩 + 검색/정렬 -->
-        <div class="ivd-wf-bar" id="ivdWorkflowBar"></div>
-
-        <div class="toolbar">
-          <input class="input input-search" id="ivdSearch" type="search" placeholder="장비명·제조사·검사원리·표적 항목·검체·CLSI 코드 검색 (예: VIRTUO, MALDI, dRAST, BioFire, CRE, M47)..." />
+        <!-- 간단한 검색 바 -->
+        <div class="toolbar" style="margin-bottom:4px;">
+          <input class="input input-search" id="ivdSearch" type="search" placeholder="장비명·제조사·시약/패널명·표적 균종 검색 (예: VIRTUO, M10, BD MAX, IR Biotyper, BioFire, Allplex)..." />
           <select class="select" id="ivdSort">
             <option value="default">기본 분류순</option>
             <option value="cost_asc">도입 규모 작은순 (하→상)</option>
             <option value="run_asc">시약 단가 낮은순 (하→상)</option>
             <option value="ease_desc">자동화·편의성 높은순 (상→하)</option>
-            <option value="papers_desc">학술 평가 논문 많은순</option>
           </select>
-          <button class="btn" id="ivdE2Only" type="button">⚠️ E2 주의보 연계만</button>
         </div>
-
-        <!-- 장비 비교 카드 그리드 -->
-        <div class="ivd-grid" id="ivdDeviceGrid"></div>
       </div>
+
+      <!-- 8대 분류별 확실히 구분된 그룹 컨테이너 -->
+      <div id="ivdGroupedContainer"></div>
     </section>
 
     <div class="footer-note">
       본 대시보드는 공개 학술 초록(PubMed·Crossref) 및 공식 감염병 통계(KDCA·WHO) 기반 참고 요약입니다.
       AI 해석은 원문 사실과 분리 표기되며, 최종 임상·검사실 의사결정 시 반드시 원문을 확인하세요.
-      (북마크는 현재 기기 브라우저에 개인별 저장 · GitHub Pages 메인 단일화 v8.5.1)
+      (북마크는 현재 기기 브라우저에 개인별 저장 · GitHub Pages 메인 단일화 v8.6.0)
     </div>
   </main>
 
@@ -3678,52 +3745,47 @@
     }
 
 
-    /* ==================== 탭 5: 검사장비·시약 (노써치 스타일 비교관) ==================== */
+    /* ==================== 탭 5: 검사장비·시약 (8대 분류 구획화 + 초간결 카드 + 2단 시약 + 체크리스트) ==================== */
     function getIvdCatalogData() {
-      return (state.data && state.data.ivdCatalog) || { totalDevices: 0, categories: [], workflowTags: [], devices: [] };
+      return (state.data && state.data.ivdCatalog) || { totalDevices: 0, totalPanels: 0, categories: [], workflowTags: [], devices: [] };
+    }
+
+    function getCategoryTheme(category) {
+      var cat = String(category || '');
+      if (cat.indexOf('1.') === 0) return { num: 'GROUP 01', color: '#dc2626', bg: '#fef2f2', border: '#fecaca', label: '혈액배양' };
+      if (cat.indexOf('2.') === 0) return { num: 'GROUP 02', color: '#7c3aed', bg: '#f5f3ff', border: '#ddd6fe', label: '동정·타이핑' };
+      if (cat.indexOf('3.') === 0) return { num: 'GROUP 03', color: '#d97706', bg: '#fffbeb', border: '#fde68a', label: '자동·신속AST' };
+      if (cat.indexOf('4.') === 0) return { num: 'GROUP 04', color: '#0284c7', bg: '#f0f9ff', border: '#bae6fd', label: '카트리지PCR' };
+      if (cat.indexOf('5.') === 0) return { num: 'GROUP 05', color: '#1e40af', bg: '#eff6ff', border: '#bfdbfe', label: '대용량분자' };
+      if (cat.indexOf('6.') === 0) return { num: 'GROUP 06', color: '#0d9488', bg: '#f0fdfa', border: '#99f6e4', label: '개방형PCR' };
+      if (cat.indexOf('7.') === 0) return { num: 'GROUP 07', color: '#059669', bg: '#ecfdf5', border: '#a7f3d0', label: '배양·전처리' };
+      return { num: 'GROUP 08', color: '#4f46e5', bg: '#eef2ff', border: '#c7d2fe', label: '면역·POCT' };
     }
 
     function getCategorySilhouetteSvg(category) {
       var cat = String(category || '');
-      var accent = '#1d4ed8';
-      var label = 'IVD';
+      var th = getCategoryTheme(cat);
       var svgBody = '';
       if (cat.indexOf('1.') === 0) {
-        accent = '#dc2626';
-        label = '혈액배양';
         svgBody = '<rect x="12" y="8" width="40" height="48" rx="4" fill="#fee2e2" stroke="#dc2626" stroke-width="2"/><line x1="12" y1="24" x2="52" y2="24" stroke="#dc2626" stroke-width="1.5"/><line x1="12" y1="40" x2="52" y2="40" stroke="#dc2626" stroke-width="1.5"/><circle cx="22" cy="16" r="2.2" fill="#dc2626"/><circle cx="30" cy="16" r="2.2" fill="#059669"/><circle cx="22" cy="32" r="2.2" fill="#dc2626"/><circle cx="30" cy="32" r="2.2" fill="#dc2626"/>';
       } else if (cat.indexOf('2.') === 0) {
-        accent = '#7c3aed';
-        label = 'MALDI-TOF';
         svgBody = '<rect x="14" y="10" width="36" height="44" rx="5" fill="#ede9fe" stroke="#7c3aed" stroke-width="2"/><path d="M20 42 L26 30 L31 38 L36 20 L42 42" fill="none" stroke="#7c3aed" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>';
       } else if (cat.indexOf('3.') === 0) {
-        accent = '#d97706';
-        label = '신속·자동AST';
         svgBody = '<rect x="12" y="14" width="40" height="36" rx="4" fill="#fef3c7" stroke="#d97706" stroke-width="2"/><circle cx="22" cy="25" r="3" fill="#059669"/><circle cx="32" cy="25" r="3" fill="#d97706"/><circle cx="42" cy="25" r="3" fill="#dc2626"/><circle cx="22" cy="38" r="3" fill="#059669"/><circle cx="32" cy="38" r="3" fill="#059669"/><circle cx="42" cy="38" r="3" fill="#d97706"/>';
       } else if (cat.indexOf('4.') === 0) {
-        accent = '#0284c7';
-        label = '카트리지PCR';
         svgBody = '<rect x="16" y="10" width="32" height="44" rx="4" fill="#e0f2fe" stroke="#0284c7" stroke-width="2"/><rect x="22" y="16" width="20" height="12" rx="2" fill="#0284c7"/><line x1="22" y1="35" x2="42" y2="35" stroke="#0284c7" stroke-width="2"/><line x1="22" y1="42" x2="36" y2="42" stroke="#0284c7" stroke-width="2"/>';
       } else if (cat.indexOf('5.') === 0) {
-        accent = '#1e40af';
-        label = '대용량분자';
         svgBody = '<rect x="8" y="12" width="48" height="40" rx="4" fill="#dbeafe" stroke="#1e40af" stroke-width="2"/><line x1="24" y1="12" x2="24" y2="52" stroke="#1e40af" stroke-width="1.5"/><line x1="40" y1="12" x2="40" y2="52" stroke="#1e40af" stroke-width="1.5"/><rect x="12" y="18" width="8" height="10" fill="#1e40af"/>';
       } else if (cat.indexOf('6.') === 0) {
-        accent = '#0d9488';
-        label = '개방형PCR';
         svgBody = '<rect x="12" y="18" width="40" height="30" rx="4" fill="#ccfbf1" stroke="#0d9488" stroke-width="2"/><path d="M18 18 L24 10 L40 10 L46 18" fill="#99f6e4" stroke="#0d9488" stroke-width="2"/><rect x="20" y="26" width="24" height="12" rx="2" fill="#0d9488"/>';
       } else if (cat.indexOf('7.') === 0) {
-        accent = '#059669';
-        label = '배양·전처리';
         svgBody = '<circle cx="32" cy="30" r="18" fill="#d1fae5" stroke="#059669" stroke-width="2"/><path d="M24 28 Q32 20 40 28 T24 36" fill="none" stroke="#059669" stroke-width="2"/>';
       } else {
-        accent = '#4f46e5';
-        label = '면역·POCT';
         svgBody = '<rect x="14" y="14" width="36" height="36" rx="6" fill="#e0e7ff" stroke="#4f46e5" stroke-width="2"/><rect x="21" y="20" width="22" height="10" rx="2" fill="#4f46e5"/><line x1="22" y1="38" x2="42" y2="38" stroke="#4f46e5" stroke-width="2.5"/>';
       }
       return (
-        '<svg width="46" height="46" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">' + svgBody + '</svg>' +
-        '<span class="ivd-thumb-cap" style="color:' + accent + ';">' + esc(label) + '</span>'
+        '<svg width="36" height="36" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">' + svgBody + '</svg>' +
+        '<span class="ivd-thumb-cap" style="color:' + th.color + ';">' + esc(th.label) + '</span>'
       );
     }
 
@@ -3762,13 +3824,12 @@
 
       var list = all.filter(function(d) {
         if (state.ivdCategory !== 'all' && d.category !== state.ivdCategory) return false;
-        if (state.ivdWorkflow && (d.workflow_tags || []).indexOf(state.ivdWorkflow) === -1) return false;
-        if (state.ivdE2Only && (!d.e2_alerts || d.e2_alerts.length === 0)) return false;
         if (q) {
+          var panelStr = (d.panels || []).map(function(p) { return p.panel_name + ' ' + p.target_summary; }).join(' ');
           var clsiStr = (d.clsi_refs || []).map(function(c) { return c.code + ' ' + c.titleKo; }).join(' ');
           var hay = (
             d.device_name + ' ' + d.manufacturer + ' ' + d.category + ' ' + d.highlight_tag + ' ' +
-            d.method_principle + ' ' + d.test_menu + ' ' + d.specimen_volume + ' ' + d.reg_reimb + ' ' + clsiStr
+            d.method_principle + ' ' + d.test_menu + ' ' + panelStr + ' ' + clsiStr
           ).toLowerCase();
           if (hay.indexOf(q) === -1) return false;
         }
@@ -3781,8 +3842,6 @@
         list.sort(function(a, b) { return (a.cost_running.level || 2) - (b.cost_running.level || 2); });
       } else if (sortMode === 'ease_desc') {
         list.sort(function(a, b) { return (b.ease_of_use.level || 2) - (a.ease_of_use.level || 2); });
-      } else if (sortMode === 'papers_desc') {
-        list.sort(function(a, b) { return (b.total_matched_papers || 0) - (a.total_matched_papers || 0); });
       }
       return list;
     }
@@ -3794,7 +3853,7 @@
       var countEl = document.getElementById('cntDevices');
       if (countEl) countEl.textContent = allDevices.length;
 
-      // 1) Category pills with counts
+      // 1) Category filter bar
       var catCounts = {};
       allDevices.forEach(function(d) {
         catCounts[d.category] = (catCounts[d.category] || 0) + 1;
@@ -3813,85 +3872,64 @@
         });
       });
 
-      // 2) Workflow filter chips (top practical tags)
-      var quickTags = ['24시간응급', '랜덤액세스', '대량처리', '현장POCT', '신속AST', '증후군패널', '표준자동화', '개방형추출', '감염혈청학'];
-      var tagCountMap = {};
-      (catData.workflowTags || []).forEach(function(t) { tagCountMap[t.tag] = t.count; });
-      var wfHtml = ['<span style="font-size:0.76rem; font-weight:800; color:#64748b; margin-right:2px;">맞춤 조건:</span>'];
-      quickTags.forEach(function(tg) {
-        if (!tagCountMap[tg]) return;
-        var act = (state.ivdWorkflow === tg) ? ' active' : '';
-        wfHtml.push('<button class="ivd-wf-chip' + act + '" data-wf="' + esc(tg) + '" type="button">' + esc(tg) + ' (' + tagCountMap[tg] + ')</button>');
-      });
-      if (state.ivdWorkflow) {
-        wfHtml.push('<button class="ivd-wf-chip" data-wf="" type="button" style="color:#dc2626; border-color:#fca5a5;">✕ 조건 해제</button>');
-      }
-      var wfBar = document.getElementById('ivdWorkflowBar');
-      wfBar.innerHTML = wfHtml.join('');
-      wfBar.querySelectorAll('.ivd-wf-chip').forEach(function(b) {
-        b.addEventListener('click', function() {
-          var v = b.dataset.wf;
-          state.ivdWorkflow = (state.ivdWorkflow === v) ? '' : v;
-          renderIvdCatalog();
-        });
-      });
-
-      // 3) Render device cards
+      // 2) Render Grouped Sections (distinct category boxes + ultra-clean compact cards)
       var list = getFilteredIvdDevices();
-      document.getElementById('ivdFilterMeta').textContent = '표시 ' + list.length + '종 / 전체 ' + allDevices.length + '종';
+      var totalPanels = catData.totalPanels || 0;
+      document.getElementById('ivdFilterMeta').textContent =
+        '표시 ' + list.length + '종 / 전체 ' + allDevices.length + '종' + (totalPanels ? (' · 시약/패널 ' + totalPanels + '종 연계') : '');
 
+      var container = document.getElementById('ivdGroupedContainer');
       if (!list.length) {
-        document.getElementById('ivdDeviceGrid').innerHTML = '<div class="empty-state" style="grid-column:1/-1;">선택한 조건에 맞는 검사장비·시약이 없습니다.</div>';
+        container.innerHTML = '<div class="card"><div class="empty-state">검색 조건에 맞는 검사장비·시약이 없습니다.</div></div>';
         return;
       }
 
-      var cardsHtml = list.map(function(d) {
-        var isCmp = state.ivdCompareIds.indexOf(d.device_id) !== -1;
-        var e2Cnt = (d.e2_alerts || []).length;
-        var pCnt = d.total_matched_papers || 0;
-        var safeId = esc(d.device_id).replace(/'/g, "\\'");
+      var groupedMap = {};
+      list.forEach(function(d) {
+        if (!groupedMap[d.category]) groupedMap[d.category] = [];
+        groupedMap[d.category].push(d);
+      });
 
-        var e2Badge = e2Cnt > 0
-          ? '<span class="badge b-ce" title="위양성·위음성 또는 판독 유의 문헌 보고됨">⚠️ E2 주의보 ' + e2Cnt + '건</span>'
-          : '';
-        var paperBadge = pCnt > 0
-          ? '<span class="badge b-medium">📚 논문 ' + pCnt + '편</span>'
-          : '<span class="badge b-abs">CLSI ' + (d.clsi_refs || []).length + '종</span>';
+      var orderedCats = cats.filter(function(c) { return groupedMap[c] && groupedMap[c].length; });
+      Object.keys(groupedMap).forEach(function(c) {
+        if (orderedCats.indexOf(c) === -1) orderedCats.push(c);
+      });
+
+      var sectionsHtml = orderedCats.map(function(cat) {
+        var devsInCat = groupedMap[cat] || [];
+        var th = getCategoryTheme(cat);
+
+        var cardsHtml = devsInCat.map(function(d) {
+          var isCmp = state.ivdCompareIds.indexOf(d.device_id) !== -1;
+          var safeId = esc(d.device_id).replace(/'/g, "\\'");
+          return (
+            '<article class="ivd-mini-card' + (isCmp ? ' is-compared' : '') + '" onclick="openIvdDetailModal(\'' + safeId + '\')" title="클릭하여 상세 스펙·탑재 시약·체크리스트 보기">' +
+              renderIvdThumbHtml(d) +
+              '<div class="ivd-mini-info">' +
+                '<div class="ivd-mini-mfr">' + esc(d.manufacturer) + '</div>' +
+                '<h3 class="ivd-mini-name">' + esc(d.device_name) + '</h3>' +
+                '<div class="ivd-mini-oneliner">' + esc(d.highlight_tag) + '</div>' +
+              '</div>' +
+              '<button class="btn-cmp-mini' + (isCmp ? ' active' : '') + '" type="button" title="비교함 담기" onclick="event.stopPropagation(); toggleIvdCompare(\'' + safeId + '\')">' + (isCmp ? '✓ 비교' : '+ 비교') + '</button>' +
+            '</article>'
+          );
+        }).join('');
 
         return (
-          '<article class="ivd-card' + (isCmp ? ' is-compared' : '') + '">' +
-            '<div class="ivd-card-top">' +
-              renderIvdThumbHtml(d) +
-              '<div class="ivd-head-info">' +
-                '<div class="ivd-badges">' +
-                  '<span class="badge b-source">' + esc(d.category) + '</span>' +
-                  '<span class="badge b-domestic">' + esc(d.manufacturer) + '</span>' +
-                  e2Badge +
-                  paperBadge +
-                '</div>' +
-                '<h3 class="ivd-name">' + esc(d.device_name) + '</h3>' +
-                '<span class="ivd-hl-tag">' + esc(d.highlight_tag) + '</span>' +
+          '<section class="ivd-group-section" style="border-top: 4px solid ' + th.color + ';">' +
+            '<div class="ivd-group-head" style="background:' + th.bg + '; border-bottom-color:' + th.border + ';">' +
+              '<div class="ivd-group-title-wrap">' +
+                '<span class="ivd-group-badge" style="background:' + th.color + ';">' + esc(th.num) + '</span>' +
+                '<h3 class="ivd-group-title">' + esc(cat) + '</h3>' +
               '</div>' +
+              '<span class="ivd-group-count">' + devsInCat.length + '종</span>' +
             '</div>' +
-            '<div class="ivd-gauges">' +
-              renderIvdGaugeBlock('도입 규모', d.cost_init, 'g-navy') +
-              renderIvdGaugeBlock('시약 단가', d.cost_running, 'g-amber') +
-              renderIvdGaugeBlock('자동화·편의', d.ease_of_use, 'g-teal') +
-            '</div>' +
-            '<div class="ivd-core-specs">' +
-              '<div class="ivd-spec-line"><span class="ivd-spec-k">검사 원리</span><span class="ivd-spec-v">' + esc(d.method_principle) + '</span></div>' +
-              '<div class="ivd-spec-line"><span class="ivd-spec-k">소요 시간</span><span class="ivd-spec-v">' + esc(d.tat_hands_on) + '</span></div>' +
-              '<div class="ivd-spec-line"><span class="ivd-spec-k">처리량·구동</span><span class="ivd-spec-v">' + esc(d.throughput_mode) + '</span></div>' +
-            '</div>' +
-            '<div class="ivd-card-foot">' +
-              '<button class="btn-primary-sm" type="button" onclick="openIvdDetailModal(\'' + safeId + '\')">📋 전체 스펙 · Reference 보기</button>' +
-              '<button class="btn-cmp' + (isCmp ? ' active' : '') + '" type="button" onclick="toggleIvdCompare(\'' + safeId + '\')">' + (isCmp ? '✓ 비교담김' : '+ 비교담기') + '</button>' +
-            '</div>' +
-          '</article>'
+            '<div class="ivd-compact-grid">' + cardsHtml + '</div>' +
+          '</section>'
         );
       });
 
-      document.getElementById('ivdDeviceGrid').innerHTML = cardsHtml.join('');
+      container.innerHTML = sectionsHtml.join('');
     }
 
     function toggleIvdCompare(deviceId) {
@@ -3949,6 +3987,55 @@
       var isCmp = state.ivdCompareIds.indexOf(dev.device_id) !== -1;
       var safeId = esc(dev.device_id).replace(/'/g, "\\'");
 
+      // 1) 2-Tier Panels / Reagents section
+      var panelsHtml = '';
+      var panels = dev.panels || [];
+      if (panels.length) {
+        var pRows = panels.map(function(p) {
+          return '<tr>' +
+            '<td><strong>' + esc(p.panel_name) + '</strong>' + (p.manufacturer ? '<div style="font-size:0.72rem; color:#64748b;">' + esc(p.manufacturer) + '</div>' : '') + '</td>' +
+            '<td>' + esc(p.target_summary) + (p.note ? '<div style="font-size:0.74rem; color:#475569; margin-top:2px;">※ ' + esc(p.note) + '</div>' : '') + '</td>' +
+            '<td style="white-space:nowrap;">' + esc(p.specimen_type) + '</td>' +
+            '<td style="white-space:nowrap;"><strong>' + esc(p.tat) + '</strong></td>' +
+            '<td>' + esc(p.reg_reimb_kr) + '</td>' +
+          '</tr>';
+        }).join('');
+        panelsHtml =
+          '<div class="panel-tier-box">' +
+            '<div style="font-size:0.9rem; font-weight:800; color:#0c4a6e;">🧪 탑재 시약 · 전용/호환 패널 (' + panels.length + '종 · 2단 계층 정보)</div>' +
+            '<div style="overflow-x:auto;">' +
+              '<table class="panel-tier-table">' +
+                '<thead><tr><th style="width:23%;">시약 · 패널명</th><th style="width:36%;">검출 표적 및 특징</th><th style="width:14%;">적합 검체</th><th style="width:11%;">소요시간</th><th style="width:16%;">국내 허가·급여</th></tr></thead>' +
+                '<tbody>' + pRows + '</tbody>' +
+              '</table>' +
+            '</div>' +
+          '</div>';
+      }
+
+      // 2) Lab Verification & Introduction Checklist
+      var vc = dev.verification_checklist || {};
+      var stdChecks = vc.standardChecks || [];
+      var infraChecks = vc.infraChecks || [];
+      var chkItemsHtml = [];
+      stdChecks.forEach(function(sc) {
+        chkItemsHtml.push(
+          '<li>☑️ <strong>[표준 검증 · ' + esc(sc.code) + ']</strong> ' + esc(sc.requirement) +
+          (sc.url ? ' <a href="' + esc(sc.url) + '" target="_blank" rel="noopener noreferrer" style="font-weight:700;">지침 ↗</a>' : '') +
+          '</li>'
+        );
+      });
+      infraChecks.forEach(function(ic) {
+        chkItemsHtml.push(
+          '<li' + (ic.alert ? ' class="is-warn"' : '') + '>' + (ic.alert ? '⚠️' : '☑️') + ' <strong>[' + esc(ic.label) + ']</strong> ' + esc(ic.detail) + '</li>'
+        );
+      });
+      var checklistHtml =
+        '<div class="chk-tier-box">' +
+          '<div style="font-size:0.9rem; font-weight:800; color:#065f46;">✅ 검사실 도입 · 검증 체크리스트 (CLSI 검증 기준 · 인프라·인허가)</div>' +
+          '<ul class="chk-list">' + chkItemsHtml.join('') + '</ul>' +
+        '</div>';
+
+      // 3) Bottom Reference (CLSI + E2 + Matched Papers)
       var clsiHtml = (dev.clsi_refs || []).map(function(c) {
         return '<a class="btn" href="' + esc(c.url) + '" target="_blank" rel="noopener noreferrer" style="font-size:0.78rem; padding:5px 10px;">📘 ' + esc(c.code) + ' · ' + esc(c.titleKo) + ' ↗</a>';
       }).join(' ');
@@ -3986,7 +4073,7 @@
           '</div>';
         }).join('');
       } else {
-        papersHtml = '<div style="font-size:0.81rem; color:#64748b; padding:8px 0;">현재 수집된 논문 DB(2026년)에 해당 장비명과 직접 일치하는 평가 논문이 없습니다. 위 CLSI 검증 표준을 참고하세요.</div>';
+        papersHtml = '<div style="font-size:0.81rem; color:#64748b; padding:6px 0;">현재 수집된 논문 DB에 해당 장비명과 직접 일치하는 평가 논문이 없습니다. 위 CLSI 검증 표준을 참고하세요.</div>';
       }
 
       var bodyHtml =
@@ -4030,6 +4117,8 @@
           '<div class="ivd-box-pros"><strong>✅ 도입 시 주요 강점</strong><div style="margin-top:4px;">' + esc(dev.pros) + '</div></div>' +
           '<div class="ivd-box-cons"><strong>🔍 도입 전 체크포인트</strong><div style="margin-top:4px;">' + esc(dev.cons_check) + '</div></div>' +
         '</div>' +
+        panelsHtml +
+        checklistHtml +
         '<div class="ivd-ref-section">' +
           '<h4 class="ivd-ref-title">📚 근거 자료 (Reference — 표준 검증 지침 · 학술 평가 문헌)</h4>' +
           '<div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px;">' + clsiHtml + '</div>' +
@@ -4062,13 +4151,18 @@
       }
 
       var rows = [
-        buildRow('핵심 특징 태그', function(d) { return '<span class="ivd-hl-tag">' + esc(d.highlight_tag) + '</span>'; }),
+        buildRow('핵심 특징', function(d) { return '<span class="ivd-hl-tag">' + esc(d.highlight_tag) + '</span>'; }),
         buildRow('도입 규모', function(d) { return renderIvdGaugeBlock('도입 규모', d.cost_init, 'g-navy'); }),
         buildRow('시약 단가 구조', function(d) { return renderIvdGaugeBlock('시약 단가', d.cost_running, 'g-amber'); }),
         buildRow('자동화 · 편의성', function(d) { return renderIvdGaugeBlock('자동화', d.ease_of_use, 'g-teal'); }),
         buildRow('식약처 허가 · 수가', function(d) { return esc(d.reg_reimb); }),
         buildRow('검사 방법 · 원리', function(d) { return esc(d.method_principle); }),
         buildRow('검사 가능 항목', function(d) { return esc(d.test_menu); }),
+        buildRow('탑재 시약 · 패널', function(d) {
+          var ps = d.panels || [];
+          if (!ps.length) return '<span style="color:#64748b;">상세 IFU 참조</span>';
+          return ps.map(function(p) { return '• ' + esc(p.panel_name); }).join('<br/>');
+        }),
         buildRow('검체 · 최소 용량', function(d) { return esc(d.specimen_volume); }),
         buildRow('소요시간 · Hands-on', function(d) { return '<strong>' + esc(d.tat_hands_on) + '</strong>'; }),
         buildRow('동시 처리량 · 구동', function(d) { return esc(d.throughput_mode); }),
@@ -4084,7 +4178,7 @@
           return '<div><strong>표준:</strong> ' + (cTags || '-') + '</div>' +
                  '<div><strong>평가 논문:</strong> ' + (d.total_matched_papers || 0) + '편</div>' +
                  e2Txt +
-                 '<button class="btn" type="button" style="margin-top:6px; padding:4px 9px; font-size:0.75rem;" onclick="closeModalById(\'ivdCompareModal\'); openIvdDetailModal(\'' + safeId + '\');">개별 논문·원문 보기 ↗</button>';
+                 '<button class="btn" type="button" style="margin-top:6px; padding:4px 9px; font-size:0.75rem;" onclick="closeModalById(\'ivdCompareModal\'); openIvdDetailModal(\'' + safeId + '\');">개별 상세·논문 보기 ↗</button>';
         })
       ];
 
@@ -4092,7 +4186,7 @@
         '<div class="section-head" style="margin-bottom:12px;">' +
           '<div>' +
             '<h3 class="section-title">⚖️ 검사장비 · 시약 나란히 스펙 비교 (' + devs.length + '종)</h3>' +
-            '<div class="section-sub">제조사 공식 사양서(IFU) 기준 핵심 항목 및 상대 지표 대조표</div>' +
+            '<div class="section-sub">제조사 공식 사양서(IFU) 기준 핵심 항목 및 탑재 시약 대조표</div>' +
           '</div>' +
           '<button class="btn" type="button" onclick="closeModalById(\'ivdCompareModal\')">닫기</button>' +
         '</div>' +
@@ -4368,11 +4462,7 @@
       });
       document.getElementById('ivdSearch').addEventListener('input', renderIvdCatalog);
       document.getElementById('ivdSort').addEventListener('change', renderIvdCatalog);
-      document.getElementById('ivdE2Only').addEventListener('click', function(e) {
-        state.ivdE2Only = !state.ivdE2Only;
-        e.currentTarget.classList.toggle('btn-ce-active', state.ivdE2Only);
-        renderIvdCatalog();
-      });
+
 
       ['ivdDetailModal', 'ivdCompareModal'].forEach(function(mid) {
         var mEl = document.getElementById(mid);
