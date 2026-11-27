@@ -32,7 +32,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 import requests
 
-CODE_VERSION = "v8.6.3"
+CODE_VERSION = "v8.6.4"
 KST = datetime.timezone(datetime.timedelta(hours=9))
 
 SHEET_ITEMS = "items"
@@ -42,6 +42,7 @@ SHEET_KDCA_SURV = "kdca_surveillance"
 SHEET_HAI_STATS = "hai_stats"
 SHEET_IVD = "ivd_catalog"
 SHEET_IVD_PANELS = "ivd_panels"
+SHEET_KDCA_GUIDELINES = "kdca_guidelines"
 SHEET_PILOT = "pilot_v82"
 SHEET_DRYRUN = "dryrun_v83"
 TREND_CONFIG_KEY = "paper_macro_trend_v843"
@@ -309,7 +310,7 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 OUTPUT_JSON_PATH = ROOT_DIR / "docs" / "data" / "dashboard.json"
 
 HTTP = requests.Session()
-HTTP.headers.update({"User-Agent": "ClinicalMicroBriefing/8.6.3 (Academic Surveillance Bot)"})
+HTTP.headers.update({"User-Agent": "ClinicalMicroBriefing/8.6.4 (Academic Surveillance Bot)"})
 
 
 def now_kst() -> datetime.datetime:
@@ -1843,7 +1844,7 @@ def detect_guideline_org(title: str, journal: str, collective_authors: str = "")
         and re.search(r"guideline|guidance|guide to utilization|consensus|recommendations", t, re.IGNORECASE)
     ):
         return "IDSA"
-    return f"Guideline · {j}" if j else "Guideline"
+    return "기타 가이드라인"
 
 
 def _normalize_guideline_title_key(title: str) -> str:
@@ -2773,9 +2774,38 @@ def check_kdca_guidelines_live(notifiable_list: List[Dict[str, Any]]) -> Tuple[L
     return updated, releases_list, msg, direct_total
 
 
-def build_reference_and_notifiable_live(run_live_probe: bool = True) -> Tuple[Dict[str, Any], List[Dict[str, Any]], List[Dict[str, Any]], str]:
+def _normalize_kdca_sheet_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    for r in rows:
+        name = safe_str(r.get("name"))
+        if not name:
+            continue
+        dv_raw = safe_str(r.get("directVerified")).upper()
+        out.append({
+            "code": safe_str(r.get("code")),
+            "group": safe_str(r.get("group")),
+            "name": name,
+            "scope": safe_str(r.get("scope")),
+            "deadline": safe_str(r.get("deadline")),
+            "lab": safe_str(r.get("lab")),
+            "dept": safe_str(r.get("dept")),
+            "guidelineGroup": safe_str(r.get("guidelineGroup")),
+            "guidelineKeyword": safe_str(r.get("guidelineKeyword")),
+            "latestTitle": safe_str(r.get("latestTitle")),
+            "latestYear": safe_str(r.get("latestYear")),
+            "latestUrl": safe_str(r.get("latestUrl")),
+            "latestDate": safe_str(r.get("latestDate")),
+            "directVerified": dv_raw in ("TRUE", "1", "YES", "Y"),
+        })
+    return out
+
+
+def build_reference_and_notifiable_live(
+    run_live_probe: bool = True,
+    kdca_sheet_rows: Optional[List[Dict[str, Any]]] = None,
+) -> Tuple[Dict[str, Any], List[Dict[str, Any]], List[Dict[str, Any]], str]:
     rs = json.loads(REFERENCE_STANDARDS_MASTER_JSON)
-    notifiable = json.loads(NOTIFIABLE_DISEASES_MASTER_JSON)
+    notifiable = _normalize_kdca_sheet_rows(kdca_sheet_rows) if kdca_sheet_rows else json.loads(NOTIFIABLE_DISEASES_MASTER_JSON)
     if not run_live_probe:
         # 오프라인 빌드에서도 검증 완료 2026 직링크 기반 주간 브리핑 출간 소식 목록 생성
         _, releases_offline, kdca_offline_msg, _ = check_kdca_guidelines_live_offline(notifiable)
@@ -3929,6 +3959,7 @@ def write_dashboard_json(
     precomputed_live: Optional[Tuple[Dict[str, Any], List[Dict[str, Any]], List[Dict[str, Any]], str]] = None,
     ivd_rows: Optional[List[Dict[str, Any]]] = None,
     ivd_panel_rows: Optional[List[Dict[str, Any]]] = None,
+    kdca_sheet_rows: Optional[List[Dict[str, Any]]] = None,
 ) -> str:
     items = []
     seen_guide_title_keys: Set[str] = set()
@@ -3938,6 +3969,8 @@ def write_dashboard_json(
             continue
         pub_date = safe_str(r.get("pub_date"))[:10]
         source = safe_str(r.get("source"))
+        if safe_str(r.get("content_type")) == "guideline" and source not in ("IDSA", "SHEA", "ESCMID", "ASM", "기타 가이드라인"):
+            source = "기타 가이드라인"
         title_orig = safe_str(r.get("title_orig"))
         title_ko = safe_str(r.get("title_ko")) or title_orig
         ctype = safe_str(r.get("content_type")) or "paper"
@@ -4035,7 +4068,7 @@ def write_dashboard_json(
     if precomputed_live is not None:
         rs_live, noti_live, kdca_rel_live, live_std_msg = precomputed_live
     else:
-        rs_live, noti_live, kdca_rel_live, live_std_msg = build_reference_and_notifiable_live(run_live_probe=run_live_standards_probe)
+        rs_live, noti_live, kdca_rel_live, live_std_msg = build_reference_and_notifiable_live(run_live_probe=run_live_standards_probe, kdca_sheet_rows=kdca_sheet_rows)
     payload["referenceStandards"] = rs_live
     payload["notifiableDiseases"] = noti_live
     payload["kdcaGuidelineReleases"] = kdca_rel_live
@@ -4076,11 +4109,16 @@ def sync_sheet_to_dashboard_json(ss, run_live_standards_probe: bool = True) -> s
         ivd_panels = read_sheet_as_dicts(ss, SHEET_IVD_PANELS)
     except Exception:
         ivd_panels = []
+    try:
+        kdca_guides = read_sheet_as_dicts(ss, SHEET_KDCA_GUIDELINES)
+    except Exception:
+        kdca_guides = []
     return write_dashboard_json(
         items, surv, hai, logs, cfg_map,
         run_live_standards_probe=run_live_standards_probe,
         ivd_rows=ivd,
         ivd_panel_rows=ivd_panels,
+        kdca_sheet_rows=kdca_guides,
     )
 
 
@@ -4267,7 +4305,11 @@ def mode_test_apis(allow_h1: bool = False) -> None:
 
     # 4) 공식 지침(CLSI 27종·EUCAST 5종·KDCA 지침 게시판) 라이브 자동 점검 + dashboard.json 최신 반영
     print("\n--- [Step 3] CLSI(M 20·MM 7) · EUCAST(5) · KDCA 지침 게시판 자동 점검 및 dashboard.json 반영 ---")
-    rs_live, noti_live, kdca_rel_live, live_std_msg = build_reference_and_notifiable_live(run_live_probe=True)
+    try:
+        _kdca_rows_probe = read_sheet_as_dicts(ss, SHEET_KDCA_GUIDELINES)
+    except Exception:
+        _kdca_rows_probe = []
+    rs_live, noti_live, kdca_rel_live, live_std_msg = build_reference_and_notifiable_live(run_live_probe=True, kdca_sheet_rows=_kdca_rows_probe)
     print(f"[공식 지침 점검 결과] {live_std_msg}")
 
     log_note = (
@@ -4290,12 +4332,17 @@ def mode_test_apis(allow_h1: bool = False) -> None:
         ivd_panels_all = read_sheet_as_dicts(ss, SHEET_IVD_PANELS)
     except Exception:
         ivd_panels_all = []
+    try:
+        kdca_guides_all = read_sheet_as_dicts(ss, SHEET_KDCA_GUIDELINES)
+    except Exception:
+        kdca_guides_all = []
     write_dashboard_json(
         items_all, surv_all, hai_all, logs_all, cfg_map,
         run_live_standards_probe=False,
         precomputed_live=(rs_live, noti_live, kdca_rel_live, live_std_msg),
         ivd_rows=ivd_all,
         ivd_panel_rows=ivd_panels_all,
+        kdca_sheet_rows=kdca_guides_all,
     )
 
 
@@ -4630,6 +4677,8 @@ def mode_collect(allow_h1: bool = False) -> None:
                 + ' NOT "adherence"[Title] NOT "compliance"[Title] NOT "retrospective"[Title]'
                 + ' NOT "usefulness analysis"[Title] NOT "tolerability outcomes"[Title]'
                 + ' NOT "ChatGPT"[Title] NOT "large language model*"[Title] NOT "commentary on"[Title]'
+                + ' NOT "impact of"[Title] NOT "evaluation of"[Title] NOT "validation of"[Title]'
+                + ' NOT "implementation of"[Title] NOT "discordance"[Title] NOT "survey"[Title]'
             )
             g_ids = fetch_pubmed_ids(g_query, guideline_days, fetch_limit, ncbi_key)
             total_fetched += len(g_ids)
