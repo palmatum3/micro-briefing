@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="robots" content="noindex, nofollow" />
-  <title>임상미생물 주간 브리핑 v8.6.4</title>
+  <title>임상미생물 주간 브리핑 v8.6.5</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
   <style>
     :root {
@@ -1616,7 +1616,7 @@
     <div class="topbar-inner">
       <div class="brand-row">
         <div>
-          <div class="brand-title">임상미생물 주간 브리핑 <span class="ver-pill">v8.6.4</span></div>
+          <div class="brand-title">임상미생물 주간 브리핑 <span class="ver-pill">v8.6.5</span></div>
           <div class="brand-sub" id="brandSub">GitHub Pages 메인 대시보드 · 데이터 불러오는 중...</div>
         </div>
         <div class="meta-actions">
@@ -2124,7 +2124,7 @@
     <div class="footer-note">
       본 대시보드는 공개 학술 초록(PubMed·Crossref) 및 공식 감염병 통계(KDCA·WHO) 기반 참고 요약입니다.
       AI 해석은 원문 사실과 분리 표기되며, 최종 임상·검사실 의사결정 시 반드시 원문을 확인하세요.
-      (북마크는 현재 기기 브라우저에 개인별 저장 · GitHub Pages 메인 단일화 v8.6.4)
+      (북마크는 현재 기기 브라우저에 개인별 저장 · GitHub Pages 메인 단일화 v8.6.5)
     </div>
   </main>
 
@@ -2397,6 +2397,7 @@
 
     function renderAccordionCard(item, opts) {
       const options = opts || {};
+      const extraBadgesHtml = options.extraBadgesHtml || '';
       const saved = state.bookmarks.has(item.uid);
       const previewText = (item.fact_summary_ko || item.title_orig || '').replace(/\n+/g, ' ');
       const showOrig = item.title_orig && item.title_orig !== item.title_ko;
@@ -2448,6 +2449,7 @@
                 tierBadgeHtml(item) +
                 p2Chip +
                 (item.content_type === 'outbreak' ? regionBadgeHtml(item) : '<span class="badge b-source">' + esc(item.source) + '</span>') +
+                extraBadgesHtml +
                 '<span class="badge b-cat">' + esc(item.topic_category) + '</span>' +
                 (item.is_superseded ? '<span class="badge b-superseded" title="' + esc(item.superseded_by || '최신 개정판으로 대체됨') + '">⚠️ 구버전 · 개정판 대체됨</span>' : '') +
                 '<span class="acc-date">' + esc(item.pub_date) + (item.week_key ? ' · ' + esc(item.week_key) : '') + '</span>' +
@@ -2523,6 +2525,88 @@
     }
 
     /* ==================== 탭 1 렌더링 (섹션 A 경보 -> 섹션 B 지침·가이드라인 출간 -> 섹션 C 논문 TOP 5) ==================== */
+    function findRelatedMonthOutbreak(diseaseName, refMonth, allItems) {
+      const cleanName = String(diseaseName || '').replace(/^@/, '').replace(/\(.*?\)/g, '').trim();
+      const baseKw = cleanName.replace(/(감염증|열|병|증후군)$/, '').trim() || cleanName;
+      if (!baseKw || baseKw.length < 2) return null;
+      const monthOutbreaks = (allItems || []).filter(x =>
+        x.content_type === 'outbreak' &&
+        isDomesticOutbreak(x) &&
+        String(x.pub_date || '').slice(0, 7) === refMonth
+      );
+      return monthOutbreaks.find(ob => {
+        const hay = String(ob.title_ko || '') + ' ' + String(ob.title_orig || '') + ' ' + String(ob.fact_summary_ko || '');
+        return hay.indexOf(baseKw) !== -1;
+      }) || null;
+    }
+
+    function renderMonthlyAlertAccordion(al, linkedOb, wk) {
+      const cls = al.level === 'critical' ? 'b-must' : 'b-high';
+      const methodBadge = al.method ? ('<span class="badge b-source">' + esc(al.method) + '</span>') : '';
+      const previewTxt = linkedOb
+        ? (linkedOb.fact_summary_ko || linkedOb.title_ko || '').replace(/\n+/g, ' ')
+        : ('기준월 ' + al.period + ' 전수신고 집계 ' + Number(al.count || 0).toLocaleString() + '건 · 클릭하여 판정 근거 및 관련 경보 확인');
+
+      let bodyInner = '';
+      if (linkedOb) {
+        const hasCe = isCriticalException(linkedOb);
+        const ceBox = hasCe
+          ? ('<div class="box-ce"><strong>🚨 Critical Exception — ' + esc(CE_LABELS[linkedOb.critical_exception]) + '</strong><br/>' + esc(linkedOb.exception_reason || '') + '</div>')
+          : '';
+        bodyInner =
+          '<div style="height:10px"></div>' +
+          '<div class="box-reason" style="margin-bottom:10px;">' +
+            '<strong>📊 월간 전수감시 감지:</strong> ' + esc(al.disease) + ' — ' + esc(al.reason) +
+            (linkedOb.week_key && linkedOb.week_key !== wk
+              ? (' &nbsp;<button class="btn" type="button" style="padding:3px 9px; font-size:0.75rem;" onclick="event.stopPropagation(); jumpToWeek('' + esc(linkedOb.week_key) + '')">보도 주차(' + esc(linkedOb.week_key) + ')로 이동 ↗</button>')
+              : '') +
+          '</div>' +
+          ceBox +
+          '<div style="font-weight:800; font-size:0.92rem; color:#0f172a; margin-bottom:6px;">📰 연계 공식 경보: ' + esc(linkedOb.title_ko) + ' (' + esc(linkedOb.pub_date) + ')</div>' +
+          '<div class="box-fact"><span class="box-label">원문 사실 요약</span>' + esc(linkedOb.fact_summary_ko || '요약 내용 없음') + '</div>' +
+          (linkedOb.ai_clinical_note ? '<div class="box-ai"><span class="box-label">임상·검사실 적용 포인트 (AI 참고 해석)</span>' + esc(linkedOb.ai_clinical_note) + '</div>' : '') +
+          '<div class="acc-footer">' +
+            '<div>' + accessBadge(linkedOb.access_status) + (linkedOb.week_key ? ' · 발행 주차: ' + esc(linkedOb.week_key) : '') + '</div>' +
+            (linkedOb.source_url ? '<a href="' + esc(linkedOb.source_url) + '" target="_blank" rel="noopener noreferrer" style="font-weight:700;">KDCA 원문 바로가기 ↗</a>' : '') +
+          '</div>';
+      } else {
+        bodyInner =
+          '<div style="height:10px"></div>' +
+          '<div class="box-fact"><span class="box-label">월간 전수감시 이상신호 상세 근거</span>' +
+            '• 대상 감염병: ' + esc(al.disease) + '\n' +
+            '• 기준월 및 신고건수: ' + esc(al.period) + ' 월간 누적 ' + Number(al.count || 0).toLocaleString() + '건\n' +
+            '• 판정 기준 및 결과: ' + esc(al.reason) + (al.method ? (' (' + esc(al.method) + ')') : '') +
+          '</div>' +
+          '<div class="acc-footer">' +
+            '<div>출처: 질병관리청(KDCA) 전수신고 감염병 발생현황 Open API</div>' +
+            '<div style="display:flex; gap:8px; flex-wrap:wrap;">' +
+              '<button class="btn" type="button" style="padding:4px 10px; font-size:0.78rem;" onclick="event.stopPropagation(); switchTab('outbreak'); setOutbreakSubView('charts');">감염병 정보 그래프 보기 ↗</button>' +
+              '<button class="btn" type="button" style="padding:4px 10px; font-size:0.78rem;" onclick="event.stopPropagation(); switchTab('outbreak'); setOutbreakSubView('notifiable');">법정감염병 기준 ↗</button>' +
+            '</div>' +
+          '</div>';
+      }
+
+      return (
+        '<article class="acc-item' + (al.level === 'critical' ? ' tier-must' : ' region-domestic') + '">' +
+          '<div class="acc-header" onclick="this.parentElement.classList.toggle('open')">' +
+            '<div class="acc-main">' +
+              '<div class="acc-badges">' +
+                '<span class="badge ' + cls + '">' + (al.level === 'critical' ? '긴급 감지' : '급증 주의') + '</span>' +
+                '<span class="badge b-domestic">국내 · KDCA</span>' +
+                '<span class="badge b-month-snap">기준월 ' + esc(al.period) + ' 월간</span>' +
+                methodBadge +
+                (linkedOb ? '<span class="badge b-oa">공식 경보 연계</span>' : '') +
+              '</div>' +
+              '<h3 class="acc-title">' + esc(al.disease) + ' — ' + esc(al.reason) + '</h3>' +
+              '<div class="acc-preview">' + esc(previewTxt) + '</div>' +
+            '</div>' +
+            '<div class="acc-right"><span class="chev">▼</span></div>' +
+          '</div>' +
+          '<div class="acc-body">' + bodyInner + '</div>' +
+        '</article>'
+      );
+    }
+
     function renderWeeklyBriefing() {
       const items = (state.data.items || []).filter(x => x.content_type !== 'duplicate');
       const surv = state.data.surveillance || {};
@@ -2548,7 +2632,27 @@
       const snapshots = surv.monthlySnapshots || {};
       const monthAlerts = refMonth && snapshots[refMonth] ? snapshots[refMonth] : [];
 
-      const totalAlertsCnt = monthAlerts.length + weekOutbreaks.length;
+      // 동일 주차에 같은 질환의 월간 전수감시 감지와 KDCA 보도자료가 함께 있을 경우 1개 아코디언 카드로 통합
+      const mergedWeekObExtra = {};
+      const standaloneMonthAlerts = [];
+      monthAlerts.forEach(al => {
+        const linkedSameWeek = weekOutbreaks.find(ob => {
+          if (!isDomesticOutbreak(ob)) return false;
+          const cleanName = String(al.disease || '').replace(/^@/, '').replace(/\(.*?\)/g, '').trim();
+          const baseKw = cleanName.replace(/(감염증|열|병|증후군)$/, '').trim() || cleanName;
+          const hay = String(ob.title_ko || '') + ' ' + String(ob.title_orig || '');
+          return baseKw.length >= 2 && hay.indexOf(baseKw) !== -1;
+        });
+        if (linkedSameWeek) {
+          mergedWeekObExtra[linkedSameWeek.uid] =
+            '<span class="badge b-month-snap">기준월 ' + esc(al.period) + ' 전수감시 ' + Number(al.count || 0).toLocaleString() + '건</span>';
+        } else {
+          const linkedSameMonth = refMonth ? findRelatedMonthOutbreak(al.disease, refMonth, items) : null;
+          standaloneMonthAlerts.push({ alert: al, linkedOb: linkedSameMonth });
+        }
+      });
+
+      const totalAlertsCnt = standaloneMonthAlerts.length + weekOutbreaks.length;
       const totalGuidesCnt = weekKdcaGuides.length + weekGuides.length + weekStdUpdates.length;
 
       // 필독 논문 TOP 5: Critical Exception 최우선 -> 잔여 슬롯 점수 높은순
@@ -2567,30 +2671,17 @@
       // SECTION A: 이상 급증(선택 주차 기준월 스냅샷) + 해당 주차 국내외 경보
       const baseYears = (surv.baselineYears || []).join('·');
       document.getElementById('weeklyAlertSub').textContent =
-        '기준월 ' + (refMonth || '-') + ' 월간 전수감시 급증(' + monthAlerts.length + '건' +
+        '기준월 ' + (refMonth || '-') + ' 월간 전수감시 감지(' + monthAlerts.length + '건' +
         (baseYears ? ' · 기저:' + baseYears : '') + ') + ' + wk + ' 국내·해외 경보(' + weekOutbreaks.length + '건)';
 
       const alertCards = [];
-      monthAlerts.forEach(al => {
-        const cls = al.level === 'critical' ? 'b-must' : 'b-high';
-        const methodBadge = al.method ? ('<span class="badge b-source">' + esc(al.method) + '</span>') : '';
-        alertCards.push(
-          '<div class="acc-item' + (al.level === 'critical' ? ' tier-must' : ' region-domestic') + '">' +
-            '<div class="acc-header" style="cursor:default;">' +
-              '<div class="acc-main">' +
-                '<div class="acc-badges">' +
-                  '<span class="badge ' + cls + '">' + (al.level === 'critical' ? '긴급 감지' : '급증 주의') + '</span>' +
-                  '<span class="badge b-domestic">국내 · KDCA</span>' +
-                  '<span class="badge b-month-snap">기준월 ' + esc(al.period) + ' 월간</span>' +
-                  methodBadge +
-                '</div>' +
-                '<h3 class="acc-title">' + esc(al.disease) + ' — ' + esc(al.reason) + '</h3>' +
-              '</div>' +
-            '</div>' +
-          '</div>'
-        );
+      standaloneMonthAlerts.forEach(entry => {
+        alertCards.push(renderMonthlyAlertAccordion(entry.alert, entry.linkedOb, wk));
       });
-      weekOutbreaks.forEach(ob => alertCards.push(renderAccordionCard(ob, { useRegionStripe: true })));
+      weekOutbreaks.forEach(ob => alertCards.push(renderAccordionCard(ob, {
+        useRegionStripe: true,
+        extraBadgesHtml: mergedWeekObExtra[ob.uid] || ''
+      })));
       document.getElementById('weeklyAlertsBox').innerHTML = alertCards.length
         ? alertCards.join('')
         : '<div class="empty-compact"><span>' + esc(wk) + ' (기준월 ' + esc(refMonth || '-') + ')에 등록된 전수감시 급증 및 국내·해외 감염병 경보가 없습니다.</span></div>';
@@ -2640,8 +2731,8 @@
           '<div class="empty-compact">' +
             '<span>' + esc(wk) + '에 신규 출간·개정된 KDCA 법정감염병 지침 및 학회·표준 가이드라인이 없습니다.</span>' +
             '<div style="display:flex; gap:6px; flex-wrap:wrap;">' +
-              '<button class="btn" type="button" onclick="switchTab(\'outbreak\'); setOutbreakSubView(\'notifiable\');">법정감염병 지침 전체 ↗</button>' +
-              '<button class="btn" type="button" onclick="switchTab(\'guideline\');">가이드라인 탭 ↗</button>' +
+              '<button class="btn" type="button" onclick="switchTab('outbreak'); setOutbreakSubView('notifiable');">법정감염병 지침 전체 ↗</button>' +
+              '<button class="btn" type="button" onclick="switchTab('guideline');">가이드라인 탭 ↗</button>' +
             '</div>' +
           '</div>'
         );
