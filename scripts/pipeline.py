@@ -32,7 +32,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 import requests
 
-CODE_VERSION = "v8.6.2"
+CODE_VERSION = "v8.6.3"
 KST = datetime.timezone(datetime.timedelta(hours=9))
 
 SHEET_ITEMS = "items"
@@ -150,6 +150,13 @@ PUBMED_CLEAN_FILTER = (
     ' AND hasabstract[text] NOT "Photo Quiz"[Title] NOT "Editorial"[Publication Type]'
     ' NOT "Letter"[Publication Type] NOT "Comment"[Publication Type]'
     ' NOT "Published Erratum"[Publication Type] NOT "News"[Publication Type]'
+)
+
+PUBMED_GUIDELINE_CLEAN_FILTER = (
+    ' NOT "Photo Quiz"[Title] NOT "Editorial"[Publication Type]'
+    ' NOT "Letter"[Publication Type] NOT "Comment"[Publication Type]'
+    ' NOT "Published Erratum"[Publication Type] NOT "News"[Publication Type]'
+    ' NOT "Erratum"[Title] NOT "Corrigendum"[Title] NOT "Author Correction"[Title]'
 )
 
 PUBMED_GENERAL_JOURNAL_CLEAN = (
@@ -302,7 +309,7 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 OUTPUT_JSON_PATH = ROOT_DIR / "docs" / "data" / "dashboard.json"
 
 HTTP = requests.Session()
-HTTP.headers.update({"User-Agent": "ClinicalMicroBriefing/8.6.2 (Academic Surveillance Bot)"})
+HTTP.headers.update({"User-Agent": "ClinicalMicroBriefing/8.6.3 (Academic Surveillance Bot)"})
 
 
 def now_kst() -> datetime.datetime:
@@ -1820,7 +1827,7 @@ def detect_guideline_org(title: str, journal: str, collective_authors: str = "")
     combined = f"{t} {ca}"
     if re.search(r"\bSHEA\b|Society for Healthcare Epidemiology of America", combined, re.IGNORECASE) or (
         re.search(r"Infect Control Hosp Epidemiol", j, re.IGNORECASE)
-        and re.search(r"Strategies to prevent|Compendium|Practice Recommendation|Practice Update|SHEA", combined, re.IGNORECASE)
+        and re.search(r"Strategies to prevent|Compendium|Practice Recommendation|Practice Update|Expert Guidance|SHEA", combined, re.IGNORECASE)
     ):
         return "SHEA"
     if re.search(r"\bESCMID\b|European Society of Clinical Microbiology|European Committee on Infection Control|EUCIC", combined, re.IGNORECASE) or (
@@ -1829,6 +1836,8 @@ def detect_guideline_org(title: str, journal: str, collective_authors: str = "")
         and not re.search(r"\bIDSA\b|Infectious Diseases Society of America", combined, re.IGNORECASE)
     ):
         return "ESCMID"
+    if re.search(r"\bAmerican Society for Microbiology\b|Practical Guidance for Clinical Microbiology", combined, re.IGNORECASE):
+        return "ASM"
     if re.search(r"\bIDSA\b|Infectious Diseases Society of America", combined, re.IGNORECASE) or (
         re.search(r"Clin Infect Dis|Open Forum Infect Dis", j, re.IGNORECASE)
         and re.search(r"guideline|guidance|guide to utilization|consensus|recommendations", t, re.IGNORECASE)
@@ -1857,6 +1866,18 @@ SUPERSEDED_GUIDELINE_RULES: List[Tuple[str, str, int, str]] = [
         "2021 IDSA·SHEA 성인 Clostridioides difficile 감염 집중 개정 지침",
     ),
     (
+        "ESCMID_CDI",
+        r"(?:ESCMID|European Society of Clinical Microbiology).*Clostridioides difficile|Clostridium difficile.*(?:ESCMID|European Society of Clinical Microbiology)",
+        2021,
+        "2021 ESCMID 성인 Clostridioides difficile 감염 치료 개정 지침",
+    ),
+    (
+        "ESCMID_BRAIN_ABSCESS",
+        r"(?:ESCMID|European Society of Clinical Microbiology).*brain abscess",
+        2023,
+        "2023 ESCMID 성인·소아 뇌농양 진단·치료 지침",
+    ),
+    (
         "IDSA_ASM_LAB",
         r"Guide to Utilization of the Microbiology Laboratory",
         2024,
@@ -1881,6 +1902,12 @@ SUPERSEDED_GUIDELINE_RULES: List[Tuple[str, str, int, str]] = [
         "2025 IDSA COVID-19 치료 및 관리 최신 개정 시리즈",
     ),
     (
+        "IDSA_COVID19_DX",
+        r"Infectious Diseases Society of America Guidelines on the Diagnosis of COVID-19",
+        2023,
+        "2023~2024 IDSA COVID-19 분자·항원 진단 최신 지침",
+    ),
+    (
         "IDSA_CIAI",
         r"Infectious Diseases Society of America.*Complicated Intra[- ]?abdominal Infections",
         2024,
@@ -1891,6 +1918,18 @@ SUPERSEDED_GUIDELINE_RULES: List[Tuple[str, str, int, str]] = [
         r"Infectious Diseases Society of America.*Complicated Urinary Tract Infections",
         2025,
         "2025 IDSA 복잡성 요로감염(cUTI) 개정 지침 시리즈",
+    ),
+    (
+        "IDSA_GAS",
+        r"Infectious Diseases Society of America.*Group A Streptococcal",
+        2025,
+        "2025 IDSA A군 연쇄구균(GAS) 인두염 개정 지침",
+    ),
+    (
+        "IDSA_HISTO",
+        r"Infectious Diseases Society of America.*Histoplasmosis",
+        2025,
+        "2025 IDSA 히스토플라스마증(Histoplasmosis) 개정 지침",
     ),
     (
         "IDSA_PIDS_CAP",
@@ -4564,7 +4603,7 @@ def mode_collect(allow_h1: bool = False) -> None:
         except Exception as e:
             fetch_errors.append(f"WHO: {e}")
 
-    # 2) 국제 학회 가이드라인 (IDSA · SHEA · ESCMID — 2016-01-01부터 11년 치 전용 소급 수집)
+    # 2) 국제 학회 가이드라인 (IDSA · SHEA · ESCMID · ASM — 2016-01-01부터 11년 치 전용 소급 수집, 초록 없는 공식 지침 포함)
     if is_enabled(cfg, "source_guideline_enabled"):
         try:
             existing_pmids_set = {r["pmid"] for r in existing_records if r.get("pmid")}
@@ -4575,17 +4614,22 @@ def mode_collect(allow_h1: bool = False) -> None:
             }
             g_cutoff_date = parse_flexible_date(guideline_start)
             g_query = (
-                '(("Infectious Diseases Society of America"[Title] OR "Infectious Diseases Society of America"[Corporate Author] OR "IDSA"[Title]'
+                '((("Infectious Diseases Society of America"[Title] OR "Infectious Diseases Society of America"[Corporate Author] OR "IDSA"[Title]'
                 ' OR "Society for Healthcare Epidemiology of America"[Title] OR "Society for Healthcare Epidemiology of America"[Corporate Author] OR "SHEA"[Title]'
-                ' OR "ESCMID"[Title] OR "European Society of Clinical Microbiology"[Title] OR "European Society of Clinical Microbiology"[Corporate Author])'
+                ' OR "ESCMID"[Title] OR "ESCMID"[Title/Abstract] OR "European Society of Clinical Microbiology"[Title] OR "European Society of Clinical Microbiology"[Corporate Author]'
+                ' OR "EUCIC"[Title] OR "European Committee on Infection Control"[Title]'
+                ' OR "American Society for Microbiology"[Title] OR "American Society for Microbiology"[Corporate Author])'
                 ' AND ("Guideline"[Title] OR "Guidelines"[Title] OR "Guidance"[Title] OR "Compendium"[Title]'
-                ' OR "Practice Recommendation*"[Title] OR "Practice Update"[Title] OR "Consensus"[Title]'
-                ' OR "Position Paper"[Title] OR "Recommendations"[Title] OR "Strategies to prevent"[Title]'
-                ' OR "Guide to Utilization"[Title] OR "Practice Guideline"[Publication Type]))'
-                + PUBMED_CLEAN_FILTER
+                ' OR "Practice Recommendation*"[Title] OR "Practice Update"[Title] OR "Expert Guidance"[Title]'
+                ' OR "Practical Guidance"[Title] OR "Consensus"[Title] OR "Position Paper"[Title]'
+                ' OR "Recommendations"[Title] OR "Strategies to prevent"[Title] OR "Guide to Utilization"[Title]'
+                ' OR "Practice Guideline"[Publication Type]))'
+                ' OR ("Infect Control Hosp Epidemiol"[Journal] AND ("Strategies to prevent"[Title] OR "Compendium"[Title] OR "Expert Guidance"[Title] OR "SHEA"[Title/Abstract] OR "Society for Healthcare Epidemiology of America"[Title/Abstract]))'
+                ' OR ("Clin Microbiol Rev"[Journal] AND "Practical Guidance for Clinical Microbiology"[Title]))'
+                + PUBMED_GUIDELINE_CLEAN_FILTER
                 + ' NOT "adherence"[Title] NOT "compliance"[Title] NOT "retrospective"[Title]'
                 + ' NOT "usefulness analysis"[Title] NOT "tolerability outcomes"[Title]'
-                + ' NOT "ChatGPT"[Title] NOT "large language model*"[Title]'
+                + ' NOT "ChatGPT"[Title] NOT "large language model*"[Title] NOT "commentary on"[Title]'
             )
             g_ids = fetch_pubmed_ids(g_query, guideline_days, fetch_limit, ncbi_key)
             total_fetched += len(g_ids)
