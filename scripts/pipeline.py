@@ -32,7 +32,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 import requests
 
-CODE_VERSION = "v8.6.1"
+CODE_VERSION = "v8.6.2"
 KST = datetime.timezone(datetime.timedelta(hours=9))
 
 SHEET_ITEMS = "items"
@@ -122,7 +122,7 @@ GEMINI_LITE_BATCH_SIZE = 5
 KDCA_EID_BASE_URL = "https://apis.data.go.kr/1790387/EIDAPIService01"
 H2_GUARD_START_DATE = "2026-07-01"
 DEFAULT_YEAR_START_DATE = "2026-01-01"
-DEFAULT_GUIDELINE_START_DATE = "2021-01-01"
+DEFAULT_GUIDELINE_START_DATE = "2016-01-01"
 
 # 100-Point Fixed Anchors (35 / 30 / 20 / 15 — Option 1 strict anchor selection)
 ANCHORS_PRACTICE = (35, 26, 16, 6)
@@ -302,7 +302,7 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 OUTPUT_JSON_PATH = ROOT_DIR / "docs" / "data" / "dashboard.json"
 
 HTTP = requests.Session()
-HTTP.headers.update({"User-Agent": "ClinicalMicroBriefing/8.6.1 (Academic Surveillance Bot)"})
+HTTP.headers.update({"User-Agent": "ClinicalMicroBriefing/8.6.2 (Academic Surveillance Bot)"})
 
 
 def now_kst() -> datetime.datetime:
@@ -1790,6 +1790,11 @@ def fetch_pubmed_articles(pmids: List[str], ncbi_api_key: str) -> List[Dict[str,
                 for pt in article.findall("./PublicationTypeList/PublicationType")
                 if (pt.text or "").strip()
             ]
+            corp_authors = [
+                (cn.text or "").strip()
+                for cn in article.findall("./AuthorList/Author/CollectiveName")
+                if (cn.text or "").strip()
+            ]
             results.append(
                 {
                     "pmid": pmid,
@@ -1799,6 +1804,7 @@ def fetch_pubmed_articles(pmids: List[str], ncbi_api_key: str) -> List[Dict[str,
                     "pubDate": pub_date,
                     "doi": doi,
                     "pubTypes": ", ".join(pub_types),
+                    "collectiveAuthors": "; ".join(corp_authors),
                     "accessStatus": "Open Access (PMC)" if has_pmc else "Abstract-only",
                 }
             )
@@ -1807,18 +1813,114 @@ def fetch_pubmed_articles(pmids: List[str], ncbi_api_key: str) -> List[Dict[str,
     return results
 
 
-def detect_guideline_org(title: str, journal: str) -> str:
+def detect_guideline_org(title: str, journal: str, collective_authors: str = "") -> str:
     t = str(title or "")
     j = str(journal or "")
-    if re.search(r"\bIDSA\b|Infectious Diseases Society of America", t, re.IGNORECASE):
-        return "IDSA"
-    if re.search(r"\bSHEA\b|Society for Healthcare Epidemiology of America", t, re.IGNORECASE) or re.search(
-        r"Infect Control Hosp Epidemiol", j, re.IGNORECASE
+    ca = str(collective_authors or "")
+    combined = f"{t} {ca}"
+    if re.search(r"\bSHEA\b|Society for Healthcare Epidemiology of America", combined, re.IGNORECASE) or (
+        re.search(r"Infect Control Hosp Epidemiol", j, re.IGNORECASE)
+        and re.search(r"Strategies to prevent|Compendium|Practice Recommendation|Practice Update|SHEA", combined, re.IGNORECASE)
     ):
         return "SHEA"
-    if re.search(r"\bESCMID\b|European Society of Clinical Microbiology", t, re.IGNORECASE):
+    if re.search(r"\bESCMID\b|European Society of Clinical Microbiology|European Committee on Infection Control|EUCIC", combined, re.IGNORECASE) or (
+        re.search(r"Clin Microbiol Infect", j, re.IGNORECASE)
+        and re.search(r"guideline|guidance|consensus|position paper|recommendations", t, re.IGNORECASE)
+        and not re.search(r"\bIDSA\b|Infectious Diseases Society of America", combined, re.IGNORECASE)
+    ):
         return "ESCMID"
+    if re.search(r"\bIDSA\b|Infectious Diseases Society of America", combined, re.IGNORECASE) or (
+        re.search(r"Clin Infect Dis|Open Forum Infect Dis", j, re.IGNORECASE)
+        and re.search(r"guideline|guidance|guide to utilization|consensus|recommendations", t, re.IGNORECASE)
+    ):
+        return "IDSA"
     return f"Guideline · {j}" if j else "Guideline"
+
+
+def _normalize_guideline_title_key(title: str) -> str:
+    s = re.sub(r"[^a-z0-9]+", " ", str(title or "").lower()).strip()
+    return re.sub(r"\s+", " ", s)
+
+
+# 최신 개정판으로 이미 대체된 구버전 지침 자동 판별 규칙 (0원)
+SUPERSEDED_GUIDELINE_RULES: List[Tuple[str, str, int, str]] = [
+    (
+        "IDSA_AMR_GN",
+        r"Infectious Diseases Society of America.*Guidance on the Treatment of (?:Antimicrobial[- ]Resistant Gram[- ]Negative|Extended[- ]Spectrum|AmpC)",
+        2026,
+        "2026 IDSA 항균제 내성 그람음성균 치료 지침 (2026-08)",
+    ),
+    (
+        "IDSA_SHEA_CDI",
+        r"(?:IDSA|Infectious Diseases Society of America).*Clostridioides difficile|Clostridium difficile.*(?:IDSA|SHEA)",
+        2021,
+        "2021 IDSA·SHEA 성인 Clostridioides difficile 감염 집중 개정 지침",
+    ),
+    (
+        "IDSA_ASM_LAB",
+        r"Guide to Utilization of the Microbiology Laboratory",
+        2024,
+        "2024 IDSA·ASM 임상미생물검사실 활용 지침 개정판",
+    ),
+    (
+        "IDSA_HIV_PRIMARY",
+        r"Primary Care Guidance for (?:Persons|Providers of Care for Persons) With Human Immunodeficiency Virus",
+        2024,
+        "2024 IDSA·HIVMA HIV 감염인 일차진료 지침 개정판",
+    ),
+    (
+        "ATS_CDC_ERS_IDSA_TB",
+        r"Treatment of (?:Drug[- ]Susceptible|Drug[- ]Resistant) Tuberculosis.*(?:ATS|IDSA)",
+        2025,
+        "2025 ATS·CDC·ERS·IDSA 결핵 치료 통합 개정 지침",
+    ),
+    (
+        "IDSA_COVID19_TX",
+        r"Infectious Diseases Society of America.*(?:Treatment and Management|Management) of (?:Patients With )?COVID-19",
+        2025,
+        "2025 IDSA COVID-19 치료 및 관리 최신 개정 시리즈",
+    ),
+    (
+        "IDSA_CIAI",
+        r"Infectious Diseases Society of America.*Complicated Intra[- ]?abdominal Infections",
+        2024,
+        "2024 IDSA 복잡성 복강내 감염(cIAI) 개정 지침 시리즈",
+    ),
+    (
+        "IDSA_CUTI",
+        r"Infectious Diseases Society of America.*Complicated Urinary Tract Infections",
+        2025,
+        "2025 IDSA 복잡성 요로감염(cUTI) 개정 지침 시리즈",
+    ),
+    (
+        "IDSA_PIDS_CAP",
+        r"Community[- ]Acquired Pneumonia in Infants and Children.*(?:IDSA|Infectious Diseases Society of America)",
+        2026,
+        "2026 IDSA·PIDS 소아 지역사회획득 폐렴(CAP) 개정 지침 시리즈",
+    ),
+    (
+        "SHEA_HAI_COMPENDIUM",
+        r"Strategies to prevent .* in acute[- ]care hospitals",
+        2022,
+        "2022~2023 SHEA·IDSA·APIC 의료관련감염(HAI) 예방 전략 Compendium",
+    ),
+]
+
+
+def detect_superseded_guideline(title_orig: str, pub_date: str) -> Tuple[bool, str]:
+    """동일 주제의 후속 개정판이 존재하는 구버전 지침인지 자동 판별 (0원)"""
+    t = str(title_orig or "")
+    if re.search(r"retrospective|adherence|compliance|usefulness analysis|tolerability outcomes|ChatGPT", t, re.IGNORECASE):
+        return False, ""
+    yr_matches = [int(y) for y in re.findall(r"\b(20[12]\d)\b", t)]
+    pub_yr = int(pub_date[:4]) if (pub_date and len(pub_date) >= 4 and pub_date[:4].isdigit()) else 0
+    doc_yr = min(yr_matches) if yr_matches else pub_yr
+    if doc_yr <= 0:
+        return False, ""
+    for _fam, pat, min_current_yr, latest_label in SUPERSEDED_GUIDELINE_RULES:
+        if re.search(pat, t, re.IGNORECASE) and doc_yr < min_current_yr:
+            return True, latest_label
+    return False, ""
 
 
 def normalize_guideline_topic_category(raw_cat: str, title_orig: str, title_ko: str) -> str:
@@ -3790,6 +3892,7 @@ def write_dashboard_json(
     ivd_panel_rows: Optional[List[Dict[str, Any]]] = None,
 ) -> str:
     items = []
+    seen_guide_title_keys: Set[str] = set()
     for r in item_rows:
         uid = safe_str(r.get("uid"))
         if not uid:
@@ -3801,12 +3904,19 @@ def write_dashboard_json(
         ctype = safe_str(r.get("content_type")) or "paper"
         if ctype == "duplicate":
             continue
+        if ctype == "guideline":
+            tkey = _normalize_guideline_title_key(title_orig)
+            if len(tkey) >= 25:
+                if tkey in seen_guide_title_keys:
+                    continue
+                seen_guide_title_keys.add(tkey)
         week_key = safe_str(r.get("week_key")) or get_iso_week_key(pub_date)
         raw_score = safe_float(r.get("importance_score"))
         score_val = int(round(raw_score)) if raw_score is not None else None
         ce_code = safe_str(r.get("critical_exception")).upper()
         if ce_code not in EXCEPTION_LABELS:
             ce_code = ""
+        is_sup, sup_by = detect_superseded_guideline(title_orig, pub_date) if ctype == "guideline" else (False, "")
         items.append(
             {
                 "uid": uid,
@@ -3833,6 +3943,8 @@ def write_dashboard_json(
                 "summary_meta": safe_str(r.get("summary_meta")),
                 "importance_reason": safe_str(r.get("importance_reason")),
                 "region_badge": extract_region_badge(source, title_orig, title_ko) if ctype == "outbreak" else "",
+                "is_superseded": is_sup,
+                "superseded_by": sup_by,
             }
         )
 
@@ -4375,7 +4487,7 @@ def mode_collect(allow_h1: bool = False) -> None:
 
     paper_days = calc_days_since(paper_start, 160)
     year_days = calc_days_since(year_start, 160)
-    guideline_days = calc_days_since(guideline_start, 2200)
+    guideline_days = calc_days_since(guideline_start, 4050)
     fetch_limit = safe_int(cfg.get("pubmed_fetch_limit"), 1000)
 
     lite_model, deep_model, fallback_model, thinking_p1, thinking_p2 = get_gemini_models(cfg)
@@ -4452,17 +4564,28 @@ def mode_collect(allow_h1: bool = False) -> None:
         except Exception as e:
             fetch_errors.append(f"WHO: {e}")
 
-    # 2) 국제 학회 가이드라인 (IDSA · SHEA · ESCMID — 2021-01-01부터 6년 치 전용 소급 수집)
+    # 2) 국제 학회 가이드라인 (IDSA · SHEA · ESCMID — 2016-01-01부터 11년 치 전용 소급 수집)
     if is_enabled(cfg, "source_guideline_enabled"):
         try:
             existing_pmids_set = {r["pmid"] for r in existing_records if r.get("pmid")}
+            existing_guide_title_keys = {
+                _normalize_guideline_title_key(r["title"]): r["uid"]
+                for r in existing_records
+                if r.get("contentType") in ("guideline", "paper") and len(_normalize_guideline_title_key(r.get("title", ""))) >= 25
+            }
             g_cutoff_date = parse_flexible_date(guideline_start)
             g_query = (
-                '(("Infectious Diseases Society of America"[Title] OR "IDSA"[Title]'
-                ' OR "Society for Healthcare Epidemiology of America"[Title] OR "SHEA"[Title]'
-                ' OR "ESCMID"[Title] OR "European Society of Clinical Microbiology"[Title])'
-                ' AND ("Guideline"[Title] OR "Guidance"[Title] OR "Compendium"[Title] OR "Practice Guideline"[Publication Type]))'
+                '(("Infectious Diseases Society of America"[Title] OR "Infectious Diseases Society of America"[Corporate Author] OR "IDSA"[Title]'
+                ' OR "Society for Healthcare Epidemiology of America"[Title] OR "Society for Healthcare Epidemiology of America"[Corporate Author] OR "SHEA"[Title]'
+                ' OR "ESCMID"[Title] OR "European Society of Clinical Microbiology"[Title] OR "European Society of Clinical Microbiology"[Corporate Author])'
+                ' AND ("Guideline"[Title] OR "Guidelines"[Title] OR "Guidance"[Title] OR "Compendium"[Title]'
+                ' OR "Practice Recommendation*"[Title] OR "Practice Update"[Title] OR "Consensus"[Title]'
+                ' OR "Position Paper"[Title] OR "Recommendations"[Title] OR "Strategies to prevent"[Title]'
+                ' OR "Guide to Utilization"[Title] OR "Practice Guideline"[Publication Type]))'
                 + PUBMED_CLEAN_FILTER
+                + ' NOT "adherence"[Title] NOT "compliance"[Title] NOT "retrospective"[Title]'
+                + ' NOT "usefulness analysis"[Title] NOT "tolerability outcomes"[Title]'
+                + ' NOT "ChatGPT"[Title] NOT "large language model*"[Title]'
             )
             g_ids = fetch_pubmed_ids(g_query, guideline_days, fetch_limit, ncbi_key)
             total_fetched += len(g_ids)
@@ -4474,10 +4597,16 @@ def mode_collect(allow_h1: bool = False) -> None:
                     pd_obj = parse_flexible_date(a["pubDate"])
                     if g_cutoff_date and pd_obj and pd_obj < g_cutoff_date:
                         continue
+                    tkey = _normalize_guideline_title_key(a["title"])
+                    if len(tkey) >= 25 and tkey in existing_guide_title_keys:
+                        total_dup += 1
+                        continue
+                    if len(tkey) >= 25:
+                        existing_guide_title_keys[tkey] = f"GUIDE_{a['pmid']}"
                     candidates.append(
                         {
                             "uid": f"GUIDE_{a['pmid']}",
-                            "source": detect_guideline_org(a["title"], a["journal"]),
+                            "source": detect_guideline_org(a["title"], a["journal"], a.get("collectiveAuthors", "")),
                             "contentType": "guideline",
                             "pubDate": a["pubDate"],
                             "title": a["title"],

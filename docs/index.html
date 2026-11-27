@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="robots" content="noindex, nofollow" />
-  <title>임상미생물 주간 브리핑 v8.6.1</title>
+  <title>임상미생물 주간 브리핑 v8.6.2</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
   <style>
     :root {
@@ -345,6 +345,8 @@
     .b-gcommon { background: #f5f3ff; color: #5b21b6; border: 1px solid #c4b5fd; }
     .b-std-new { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
     .b-std-cur { background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; }
+    .b-superseded { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
+    .acc-item.is-superseded { opacity: 0.84; border-left: 4px solid #d97706; background: #fffdf7; }
 
     /* Controls & Filters */
     .toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
@@ -1614,7 +1616,7 @@
     <div class="topbar-inner">
       <div class="brand-row">
         <div>
-          <div class="brand-title">임상미생물 주간 브리핑 <span class="ver-pill">v8.6.1</span></div>
+          <div class="brand-title">임상미생물 주간 브리핑 <span class="ver-pill">v8.6.2</span></div>
           <div class="brand-sub" id="brandSub">GitHub Pages 메인 대시보드 · 데이터 불러오는 중...</div>
         </div>
         <div class="meta-actions">
@@ -1829,14 +1831,15 @@
       <div id="guidePaneIdsa">
         <div class="card">
           <div class="section-head">
-            <h2 class="section-title">임상미생물 · 감염병 학회 가이드라인 (IDSA · SHEA · ESCMID · 2021~2026)</h2>
+            <h2 class="section-title">임상미생물 · 감염병 학회 가이드라인 (IDSA · SHEA · ESCMID · 2016~2026)</h2>
             <span class="section-sub" id="guideFilterMeta"></span>
           </div>
           <div class="toolbar">
             <select class="select" id="guideYear"></select>
             <select class="select" id="guideSource"></select>
             <select class="select" id="guideCat"></select>
-            <input class="input input-search" id="guideSearch" type="search" placeholder="가이드라인 제목·요약 키워드 검색 (예: CRE, C. difficile, 뇌염, CLABSI)..." />
+            <input class="input input-search" id="guideSearch" type="search" placeholder="가이드라인 제목·요약 키워드 검색 (예: CRE, 칸디다, C. difficile, CLABSI)..." />
+            <button class="btn" id="guideShowSuperseded" type="button" title="최신 개정판으로 대체된 구버전 지침 함께 보기">🗂️ 구버전 포함</button>
             <button class="btn" id="guideBmOnly" type="button">★ 북마크만</button>
           </div>
           <div id="guideList" class="item-list"></div>
@@ -2121,7 +2124,7 @@
     <div class="footer-note">
       본 대시보드는 공개 학술 초록(PubMed·Crossref) 및 공식 감염병 통계(KDCA·WHO) 기반 참고 요약입니다.
       AI 해석은 원문 사실과 분리 표기되며, 최종 임상·검사실 의사결정 시 반드시 원문을 확인하세요.
-      (북마크는 현재 기기 브라우저에 개인별 저장 · GitHub Pages 메인 단일화 v8.6.1)
+      (북마크는 현재 기기 브라우저에 개인별 저장 · GitHub Pages 메인 단일화 v8.6.2)
     </div>
   </main>
 
@@ -2198,13 +2201,22 @@
         return { key: 'SHEA_HAI_COMPENDIUM_' + yr, title: yr + ' SHEA·IDSA·APIC 의료관련감염(HAI) 예방 전략 Compendium 시리즈', badge: 'SHEA Compendium' };
       }
       if (item.source !== 'IDSA') return null;
+      if (/Complicated Intra-?abdominal Infections/i.test(t)) {
+        return { key: 'IDSA_CIAI_' + yr, title: yr + ' IDSA 복잡성 복강내 감염(cIAI) 임상진료지침 개정 시리즈', badge: 'IDSA cIAI' };
+      }
+      if (/Complicated Urinary Tract Infections/i.test(t)) {
+        return { key: 'IDSA_CUTI_' + yr, title: yr + ' IDSA 복잡성 요로감염(cUTI) 임상진료지침 시리즈', badge: 'IDSA cUTI' };
+      }
+      if (/Guideline Update by the Infectious Diseases Society of America on Histoplasmosis/i.test(t)) {
+        return { key: 'IDSA_HISTO_' + yr, title: yr + ' IDSA 히스토플라스마증(Histoplasmosis) 임상진료지침 개정 시리즈', badge: 'IDSA 진균' };
+      }
       if (/Community-Acquired Pneumonia in Infants and Children/i.test(t) || (/Pediatric Infectious Diseases Society/i.test(t) && /Pneumonia/i.test(t))) {
         return { key: 'IDSA_PED_CAP_' + yr, title: yr + ' IDSA·PIDS 소아 지역사회획득 폐렴(CAP) 임상진료지침 시리즈', badge: 'IDSA · PIDS' };
       }
       if (/Vaccines for the Prevention of Seasonal/i.test(t) && /Immunocompromised/i.test(t)) {
         return { key: 'IDSA_IMMUNO_VAX_' + yr, title: yr + ' IDSA 면역저하 환자 계절성 백신(COVID-19·인플루엔자·RSV) 가이드라인 시리즈', badge: 'IDSA 백신' };
       }
-      if (/Treatment and Management of Patients with COVID-19/i.test(t) || /COVID-19 치료 및 관리/.test(String(item.title_ko || ''))) {
+      if (/(?:Treatment and Management|Management) of (?:Patients With )?COVID-19/i.test(t) || /COVID-19 치료 및 관리/.test(String(item.title_ko || ''))) {
         return { key: 'IDSA_COVID19_' + yr, title: yr + ' IDSA COVID-19 치료 및 관리 임상진료지침 개정 시리즈', badge: 'IDSA COVID-19' };
       }
       return null;
@@ -2229,6 +2241,7 @@
       guideSubView: 'idsa',
       clsiSeries: 'all',
       guideBmOnly: false,
+      guideShowSuperseded: false,
       paperBmOnly: false,
       paperCeOnly: false,
       paperLimit: 30,
@@ -2418,6 +2431,8 @@
         accentClass = ' tier-ce';
       } else if (options.useRegionStripe && item.content_type === 'outbreak') {
         accentClass = isDomesticOutbreak(item) ? ' region-domestic' : ' region-overseas';
+      } else if (item.is_superseded) {
+        accentClass = ' is-superseded';
       } else if (item.importance === 'Must-Read') {
         accentClass = ' tier-must';
       }
@@ -2433,6 +2448,7 @@
                 p2Chip +
                 (item.content_type === 'outbreak' ? regionBadgeHtml(item) : '<span class="badge b-source">' + esc(item.source) + '</span>') +
                 '<span class="badge b-cat">' + esc(item.topic_category) + '</span>' +
+                (item.is_superseded ? '<span class="badge b-superseded" title="' + esc(item.superseded_by || '최신 개정판으로 대체됨') + '">⚠️ 구버전 · 개정판 대체됨</span>' : '') +
                 '<span class="acc-date">' + esc(item.pub_date) + (item.week_key ? ' · ' + esc(item.week_key) : '') + '</span>' +
               '</div>' +
               '<h3 class="acc-title">' + esc(item.title_ko) + '</h3>' +
@@ -3082,7 +3098,11 @@
 
       // Sub-tab header counts
       const guidelinesAll = (state.data.items || []).filter(x => x.content_type === 'guideline');
-      document.getElementById('cntGuideIdsa').textContent = '(' + guidelinesAll.length + ')';
+      const guidelinesCur = guidelinesAll.filter(x => !x.is_superseded);
+      const guidelinesSup = guidelinesAll.length - guidelinesCur.length;
+      document.getElementById('cntGuideIdsa').textContent = '(' + guidelinesCur.length + ')';
+      const supBtn = document.getElementById('guideShowSuperseded');
+      if (supBtn) supBtn.textContent = '🗂️ 구버전 포함 (' + guidelinesSup + ')';
       document.getElementById('cntGuideClsi').textContent = '(' + clsiAll.length + ')';
       document.getElementById('cntGuideEucast').textContent = '(' + eucastAll.length + ')';
 
@@ -3153,6 +3173,7 @@
       const yr = document.getElementById('guideYear').value;
       const src = document.getElementById('guideSource').value;
       const cat = document.getElementById('guideCat').value;
+      let hiddenSupersededCnt = 0;
       const list = (state.data.items || []).filter(x => {
         if (x.content_type !== 'guideline') return false;
         if (yr && !String(x.pub_date || '').startsWith(yr + '-')) return false;
@@ -3162,6 +3183,10 @@
         if (q) {
           const hay = (x.title_ko + ' ' + x.title_orig + ' ' + x.fact_summary_ko + ' ' + x.ai_clinical_note).toLowerCase();
           if (hay.indexOf(q) === -1) return false;
+        }
+        if (x.is_superseded && !state.guideShowSuperseded) {
+          hiddenSupersededCnt += 1;
+          return false;
         }
         return true;
       });
@@ -3210,7 +3235,9 @@
         );
       });
 
-      document.getElementById('guideFilterMeta').textContent = '총 ' + list.length + '건 (' + blocks.length + '개 주제)';
+      document.getElementById('guideFilterMeta').textContent =
+        (state.guideShowSuperseded ? '전체 ' : '현행 유효 ') + list.length + '건 (' + blocks.length + '개 주제)' +
+        (hiddenSupersededCnt > 0 ? (' · 구버전 ' + hiddenSupersededCnt + '건 숨김') : '');
       document.getElementById('guideList').innerHTML = rendered.length
         ? rendered.join('')
         : '<div class="empty-state">조건에 맞는 가이드라인이 없습니다.</div>';
@@ -4231,7 +4258,7 @@
       const papers = items.filter(x => x.content_type === 'paper');
 
       document.getElementById('cntOutbreak').textContent = outbreaks.length;
-      document.getElementById('cntGuideline').textContent = guidelines.length;
+      document.getElementById('cntGuideline').textContent = guidelines.filter(x => !x.is_superseded).length;
       document.getElementById('cntPaper').textContent = papers.length;
       const subPaperCntEl = document.getElementById('cntPaperSubList');
       if (subPaperCntEl) subPaperCntEl.textContent = '(' + papers.length + ')';
@@ -4431,6 +4458,11 @@
       ['guideSearch', 'guideYear', 'guideSource', 'guideCat'].forEach(id => {
         document.getElementById(id).addEventListener('input', renderGuidelines);
         document.getElementById(id).addEventListener('change', renderGuidelines);
+      });
+      document.getElementById('guideShowSuperseded').addEventListener('click', e => {
+        state.guideShowSuperseded = !state.guideShowSuperseded;
+        e.currentTarget.classList.toggle('btn-active', state.guideShowSuperseded);
+        renderGuidelines();
       });
       document.getElementById('guideBmOnly').addEventListener('click', e => {
         state.guideBmOnly = !state.guideBmOnly;
