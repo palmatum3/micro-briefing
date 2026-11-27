@@ -32,7 +32,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 import requests
 
-CODE_VERSION = "v8.6.0"
+CODE_VERSION = "v8.6.1"
 KST = datetime.timezone(datetime.timedelta(hours=9))
 
 SHEET_ITEMS = "items"
@@ -122,6 +122,7 @@ GEMINI_LITE_BATCH_SIZE = 5
 KDCA_EID_BASE_URL = "https://apis.data.go.kr/1790387/EIDAPIService01"
 H2_GUARD_START_DATE = "2026-07-01"
 DEFAULT_YEAR_START_DATE = "2026-01-01"
+DEFAULT_GUIDELINE_START_DATE = "2021-01-01"
 
 # 100-Point Fixed Anchors (35 / 30 / 20 / 15 — Option 1 strict anchor selection)
 ANCHORS_PRACTICE = (35, 26, 16, 6)
@@ -301,7 +302,7 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 OUTPUT_JSON_PATH = ROOT_DIR / "docs" / "data" / "dashboard.json"
 
 HTTP = requests.Session()
-HTTP.headers.update({"User-Agent": "ClinicalMicroBriefing/8.6.0 (Academic Surveillance Bot)"})
+HTTP.headers.update({"User-Agent": "ClinicalMicroBriefing/8.6.1 (Academic Surveillance Bot)"})
 
 
 def now_kst() -> datetime.datetime:
@@ -1050,9 +1051,15 @@ def summarize_deep_pass1_batch(
             "5. Pass 1 간략 요약 규칙:",
             "   - fact_summary_ko: 원문 핵심 사실(대상·설계·주요 수치·결론)을 객관적으로 2~3문장 압축.",
             '   - ai_clinical_note: 금지 상용구("참고가 될 것으로 사료됩니다", "중요성을 시사합니다" 등) 없이 대학병원 검사실 관점의 실무 포인트와 한계 각 1문장.',
-            "6. topic_category:",
-            '   - guideline: "IDSA 지침" | "ESCMID·국제 지침" | "국내 지침"',
-            '   - paper: "항균제 내성·AST" | "분자진단·신기술" | "임상 감염·치료" | "감염관리·역학" | "기타"',
+            "6. topic_category (논문 및 국제 학회 가이드라인 공통 5대 임상·검사실 실무 분야 — 출처 학회명은 source에 별도 기록되므로 분야만 분류):",
+            '   - 선택지: "항균제 내성·AST" | "분자진단·신기술" | "임상 감염·치료" | "감염관리·역학" | "기타"',
+            '     · 항균제 내성·AST: 내성균(CRE·MRSA·VRE·CRAB 등) 치료·감수성 기준·breakpoint·항균제 내성 기전',
+            '     · 분자진단·신기술: PCR·다중패널·혈액배양 신속동정·MALDI-TOF·NGS·혈청/항원 진단 권고',
+            '     · 임상 감염·치료: 폐렴·심내막염·뇌수막염·패혈증·COVID-19·진균감염 등 질환별 임상 진료·치료·용량 지침',
+            '     · 감염관리·역학: 의료관련감염(CLABSI·CAUTI·VAP·SSI·CDI) 예방, 격리·손위생, 예방접종, 항균제 스튜어드십(ASP)',
+            '     · 기타: 위 4개 영역에 속하지 않는 일반·정책 권고',
+            '   ※ 국내 KDCA 법정감염병·검사실 지침은 별도 탭에서 전담하므로 해외 학회 지침(IDSA·SHEA·ESCMID)은 반드시 위 5개 실무 분야 중 하나로 분류하십시오.',
+            '   ※ SHEA(Society for Healthcare Epidemiology of America)의 Compendium·감염관리 권고안은 실무 변경력 35/35 및 근거 30/30 기준으로 엄정 평가하십시오.', 
             "",
             "\n\n".join(blocks),
         ]
@@ -1071,9 +1078,6 @@ def summarize_deep_pass1_batch(
                         "topic_category": {
                             "type": "STRING",
                             "enum": [
-                                "IDSA 지침",
-                                "ESCMID·국제 지침",
-                                "국내 지침",
                                 "항균제 내성·AST",
                                 "분자진단·신기술",
                                 "임상 감염·치료",
@@ -1804,11 +1808,39 @@ def fetch_pubmed_articles(pmids: List[str], ncbi_api_key: str) -> List[Dict[str,
 
 
 def detect_guideline_org(title: str, journal: str) -> str:
-    if re.search(r"IDSA|Infectious Diseases Society of America", title, re.IGNORECASE):
+    t = str(title or "")
+    j = str(journal or "")
+    if re.search(r"\bIDSA\b|Infectious Diseases Society of America", t, re.IGNORECASE):
         return "IDSA"
-    if re.search(r"ESCMID|European Society of Clinical Microbiology", title, re.IGNORECASE):
+    if re.search(r"\bSHEA\b|Society for Healthcare Epidemiology of America", t, re.IGNORECASE) or re.search(
+        r"Infect Control Hosp Epidemiol", j, re.IGNORECASE
+    ):
+        return "SHEA"
+    if re.search(r"\bESCMID\b|European Society of Clinical Microbiology", t, re.IGNORECASE):
         return "ESCMID"
-    return f"Guideline · {journal}" if journal else "Guideline"
+    return f"Guideline · {j}" if j else "Guideline"
+
+
+def normalize_guideline_topic_category(raw_cat: str, title_orig: str, title_ko: str) -> str:
+    """기존 레거시 분류('IDSA 지침', 'ESCMID·국제 지침', '국내 지침')를 5대 임상·검사실 실무 분야로 정규화 (0원)"""
+    c = safe_str(raw_cat)
+    valid_cats = {"항균제 내성·AST", "분자진단·신기술", "임상 감염·치료", "감염관리·역학", "기타"}
+    if c in valid_cats:
+        return c
+    hay = f"{title_orig} {title_ko}"
+    if re.search(r"antimicrobial-resistant|antimicrobial resistance|carbapenem|breakpoint|susceptibility|항균제 내성", hay, re.I):
+        return "항균제 내성·AST"
+    if re.search(r"diagnostic|PCR|molecular|sequencing|antigen|biomarker|진단|검사법", hay, re.I) and not re.search(
+        r"treatment|management|vaccine|vaccination|stewardship|치료|예방접종|백신", hay, re.I
+    ):
+        return "분자진단·신기술"
+    if re.search(
+        r"vaccine|vaccination|immunocompromised|stewardship|infection prevention|healthcare-associated|isolation|hand hygiene|C\. difficile|Clostridioides|백신|예방접종|스튜어드십|감염관리|예방",
+        hay,
+        re.I,
+    ):
+        return "감염관리·역학"
+    return "임상 감염·치료"
 
 
 # =====================================================================
@@ -3783,7 +3815,7 @@ def write_dashboard_json(
                 "collected_at": safe_str(r.get("collected_at")),
                 "title_orig": title_orig,
                 "title_ko": title_ko,
-                "topic_category": safe_str(r.get("topic_category")) or "기타",
+                "topic_category": normalize_guideline_topic_category(r.get("topic_category"), title_orig, title_ko) if ctype == "guideline" else (safe_str(r.get("topic_category")) or "기타"),
                 "importance": safe_str(r.get("importance")) or "Medium",
                 "importance_score": score_val,
                 "score_breakdown": safe_str(r.get("score_breakdown")),
@@ -4339,11 +4371,11 @@ def mode_collect(allow_h1: bool = False) -> None:
     if guard_active:
         print(f"[상반기 소급 가드 활성] 논문 수집 범위를 {paper_start} 이후로 제한합니다 (상반기 소급 시 --allow-h1 사용).")
     year_start = H2_GUARD_START_DATE if guard_active else (cfg.get("kdca_start_date", "").strip() or DEFAULT_YEAR_START_DATE)
-    guideline_start = cfg.get("kdca_start_date", "").strip() or DEFAULT_YEAR_START_DATE
+    guideline_start = cfg.get("guideline_start_date", "").strip() or DEFAULT_GUIDELINE_START_DATE
 
     paper_days = calc_days_since(paper_start, 160)
     year_days = calc_days_since(year_start, 160)
-    guideline_days = calc_days_since(guideline_start, 365)
+    guideline_days = calc_days_since(guideline_start, 2200)
     fetch_limit = safe_int(cfg.get("pubmed_fetch_limit"), 1000)
 
     lite_model, deep_model, fallback_model, thinking_p1, thinking_p2 = get_gemini_models(cfg)
@@ -4420,21 +4452,28 @@ def mode_collect(allow_h1: bool = False) -> None:
         except Exception as e:
             fetch_errors.append(f"WHO: {e}")
 
-    # 2) 가이드라인 (IDSA · ESCMID — 2026년 전체, 편수 적음)
+    # 2) 국제 학회 가이드라인 (IDSA · SHEA · ESCMID — 2021-01-01부터 6년 치 전용 소급 수집)
     if is_enabled(cfg, "source_guideline_enabled"):
         try:
+            existing_pmids_set = {r["pmid"] for r in existing_records if r.get("pmid")}
+            g_cutoff_date = parse_flexible_date(guideline_start)
             g_query = (
-                '(("Infectious Diseases Society of America"[Title] OR "IDSA"[Title] OR "ESCMID"[Title]'
-                ' OR "European Society of Clinical Microbiology"[Title]) AND ("Guideline"[Title] OR "Guidance"[Title] OR "Practice Guideline"[Publication Type]))'
+                '(("Infectious Diseases Society of America"[Title] OR "IDSA"[Title]'
+                ' OR "Society for Healthcare Epidemiology of America"[Title] OR "SHEA"[Title]'
+                ' OR "ESCMID"[Title] OR "European Society of Clinical Microbiology"[Title])'
+                ' AND ("Guideline"[Title] OR "Guidance"[Title] OR "Compendium"[Title] OR "Practice Guideline"[Publication Type]))'
                 + PUBMED_CLEAN_FILTER
             )
             g_ids = fetch_pubmed_ids(g_query, guideline_days, fetch_limit, ncbi_key)
             total_fetched += len(g_ids)
-            pending_g = [i for i in g_ids if f"GUIDE_{i}" not in existing_uids]
+            pending_g = [i for i in g_ids if f"GUIDE_{i}" not in existing_uids and i not in existing_pmids_set]
             total_dup += len(g_ids) - len(pending_g)
             if pending_g:
                 time.sleep(pubmed_delay)
                 for a in fetch_pubmed_articles(pending_g, ncbi_key):
+                    pd_obj = parse_flexible_date(a["pubDate"])
+                    if g_cutoff_date and pd_obj and pd_obj < g_cutoff_date:
+                        continue
                     candidates.append(
                         {
                             "uid": f"GUIDE_{a['pmid']}",
